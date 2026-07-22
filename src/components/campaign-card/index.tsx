@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import type { CampaignCardData } from '@/types/campaign-card';
+import type { CampaignCardData } from '@/types/campaign';
 import { Header } from './header';
 import { Content } from './content';
 import { BudgetSentiment } from './budget-sentiment';

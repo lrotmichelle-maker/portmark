@@ -2,10 +2,10 @@
 
 import React from 'react';
 import { X, RefreshCw, Check } from 'lucide-react';
-import type { BuyerCardData } from '@/types';
+import type { OfferCardData } from './types';
 
 interface FooterProps {
-    data: BuyerCardData & { customStatus?: string };
+    data: OfferCardData & { customStatus?: string };
     onDecline: () => void;
     onCounter: () => void;
     onAccept: () => void;

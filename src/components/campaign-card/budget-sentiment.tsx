@@ -1,5 +1,5 @@
 import React from 'react';
-import type { CampaignCardData } from '@/types/campaign-card';
+import type { CampaignCardData } from '@/types/campaign';
 
 interface BudgetSentimentProps {
   data: CampaignCardData;

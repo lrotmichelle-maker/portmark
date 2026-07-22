@@ -12,11 +12,11 @@ export default function OfficeSidebar() {
     { label: 'Campaign', href: '/office/campaign' },
     { label: 'Discover', href: '/office/discover' },
     { label: 'Market', href: '/office/market' },
-    { label: 'CV', href: '/office/cv' },
   ];
 
   return (
-    <aside className="w-48 bg-black border-r border-neutral-800 h-screen sticky top-0">
+    <aside className="hidden h-screen w-48 shrink-0 flex-col justify-between border-r border-neutral-800 bg-black sticky top-0 md:flex">
+      {/* Main Nav */}
       <nav className="p-4 space-y-2">
         {menuItems.map((item) => {
           const isActive = pathname === item.href;
@@ -25,9 +25,7 @@ export default function OfficeSidebar() {
               key={item.href}
               href={item.href}
               className={`block px-4 py-2 rounded-lg transition-colors ${
-                isActive
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-300 hover:bg-neutral-800'
+                isActive ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-neutral-800'
               }`}
             >
               {item.label}
@@ -35,6 +33,30 @@ export default function OfficeSidebar() {
           );
         })}
       </nav>
+
+      {/* CV Section at the Bottom */}
+      <div className="p-4 border-t border-neutral-800">
+        <Link 
+          href="/office/cv"
+          className="group block p-3 rounded-xl border border-neutral-700 bg-gradient-to-br from-neutral-900 to-black hover:border-neutral-500 transition-all"
+        >
+          {/* Changed text color to green */}
+          <p className="text-[10px] text-emerald-500 uppercase font-bold tracking-wider mb-2">Make a new CV</p>
+          
+          <div className="space-y-1.5 text-[10px] text-neutral-300">
+            <p className="flex items-center gap-1"><span>☑</span> Change Career</p>
+            <p className="flex items-center gap-1"><span>☑</span> Side Hustles</p>
+            <p className="flex items-center gap-1"><span>☑</span> Professions</p>
+          </div>
+
+          {/* New "UPDATE NOW" Button styling */}
+          <div className="mt-4 flex justify-center">
+            <span className="px-3 py-1 text-[10px] font-bold border border-neutral-600 rounded-full text-neutral-400 group-hover:bg-blue-600 group-hover:border-blue-600 group-hover:text-white transition-all">
+              UPDATE NOW
+            </span>
+          </div>
+        </Link>
+      </div>
     </aside>
   );
 }

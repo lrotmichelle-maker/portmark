@@ -2,10 +2,10 @@
 
 import React from 'react';
 import { Users, ShoppingCart, Triangle, Eye, Heart } from 'lucide-react';
-import type { SalesCardData } from '@/types';
+import type { MarketCardData } from '@/types';
 
 interface ContentProps {
-  cardData: SalesCardData;
+  cardData: MarketCardData;
 }
 
 export default function Content({ cardData }: ContentProps) {
@@ -28,17 +28,21 @@ export default function Content({ cardData }: ContentProps) {
 
   // Format value for display
   const formatValue = (valueRaw: number): string => {
-    const millions = valueRaw / 1_000_000;
-    if (millions % 1 === 0) {
-      return `${millions}m`;
+    if (valueRaw >= 1_000_000) {
+      const millions = valueRaw / 1_000_000;
+      return `${millions.toFixed(2).replace(/\.0+$/, '').replace(/\.$/, '')}M`;
     }
-    return `${parseFloat(millions.toFixed(3))}m`;
+    if (valueRaw >= 1_000) {
+      const thousands = valueRaw / 1_000;
+      return `${thousands.toFixed(1).replace(/\.0$/, '')}k`;
+    }
+    return valueRaw.toString();
   };
 
   return (
     <div className="bg-zinc-950/20 border border-neutral-900 rounded-2xl p-3.5 flex flex-col gap-4 text-left mt-3">
       <div className="flex flex-col gap-2 px-0.5">
-        <p className="text-xs leading-relaxed font-normal text-zinc-400">
+        <p className="text-[11px] leading-relaxed font-normal text-zinc-400">
           {cardData.description}
         </p>
         <div className="select-none flex items-center gap-1.5 py-0.5">
@@ -80,10 +84,10 @@ export default function Content({ cardData }: ContentProps) {
               className={`w-3.5 h-3.5 shrink-0 ${erIconColor}`}
               strokeWidth={2.5}
             />
-            <span className="text-zinc-500 font-bold text-xs uppercase tracking-tight">
+            <span className="text-zinc-500 font-bold text-[10px] uppercase tracking-tight">
               ER
             </span>
-            <span className="font-black font-mono tracking-tight text-white text-xs">
+            <span className="font-black font-mono tracking-tight text-white text-[10px]">
               {erRatio}:1
             </span>
           </div>
@@ -92,10 +96,10 @@ export default function Content({ cardData }: ContentProps) {
               className="w-3.5 h-3.5 text-red-500 fill-red-500/10 shrink-0"
               strokeWidth={2.5}
             />
-            <span className="text-zinc-500 font-bold text-xs uppercase tracking-tight">
+            <span className="text-zinc-500 font-bold text-[10px] uppercase tracking-tight">
               Likes
             </span>
-            <span className="font-black font-mono tracking-tight text-white text-xs">
+            <span className="font-black font-mono tracking-tight text-white text-[10px]">
               {cardData.likes}
             </span>
           </div>
@@ -104,10 +108,10 @@ export default function Content({ cardData }: ContentProps) {
               className={`w-3.5 h-3.5 shrink-0 ${vlIconColor}`}
               strokeWidth={2.5}
             />
-            <span className="text-zinc-500 font-bold text-xs uppercase tracking-tight">
+            <span className="text-zinc-500 font-bold text-[10px] uppercase tracking-tight">
               V/L
             </span>
-            <span className="font-black font-mono tracking-tight text-white text-xs">
+            <span className="font-black font-mono tracking-tight text-white text-[10px]">
               {vlRatio}:1
             </span>
           </div>

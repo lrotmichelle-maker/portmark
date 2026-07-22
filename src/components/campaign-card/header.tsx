@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { CheckCircle } from 'lucide-react';
-import type { CampaignCardData } from '@/types/campaign-card';
+import type { CampaignCardData } from '@/types/campaign';
 
 interface HeaderProps {
   data: CampaignCardData;

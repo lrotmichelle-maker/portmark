@@ -6,7 +6,7 @@ import { Search, X, Briefcase, Flame, ArrowUpWideNarrow, UserCheck, Timer } from
 import JobCard from '@/components/job-card';
 import Grid from '@/components/layout/grid'; 
 import RecruitModal from '@/components/layout/recruit-modal'; // Imported our new pop-out form modal
-import { mockJobs } from '@/components/job-card/data'; 
+import type { JobOffer } from '@/components/job-card/data';
 import { hasSavedCvData, recordOfficeEvent } from '@/lib/office-history';
 
 type SortFilter = 'newest' | 'applicants' | 'payment' | 'vacants';
@@ -16,7 +16,7 @@ export default function DiscoverPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSort, setActiveSort] = useState<SortFilter>('newest');
   const [isRecruitOpen, setIsRecruitOpen] = useState(false); // Controls pop-out form engine visibility
-  const [jobsList, setJobsList] = useState(mockJobs || []);
+  const [jobsList, setJobsList] = useState<JobOffer[]>([]);
 
   // 1. Filter Engine (Executes First)
   const filteredJobs = jobsList.filter((job) => {
@@ -35,7 +35,23 @@ export default function DiscoverPage() {
     return matchesName || matchesTitle || matchesRequirements || matchesRequiredCount;
   });
 
-  const handleApplyJob = (job: (typeof mockJobs)[number]) => {
+  React.useEffect(() => {
+    const loadJobs = async () => {
+      try {
+        const response = await fetch('/api/discover');
+        if (!response.ok) throw new Error('Request failed');
+        const jobs = (await response.json()) as JobOffer[];
+        setJobsList(jobs);
+      } catch (error) {
+        console.error('Failed to load discover jobs from database', error);
+        setJobsList([]);
+      }
+    };
+
+    loadJobs();
+  }, []);
+
+  const handleApplyJob = (job: JobOffer) => {
     if (!hasSavedCvData()) {
       recordOfficeEvent({
         type: 'application',

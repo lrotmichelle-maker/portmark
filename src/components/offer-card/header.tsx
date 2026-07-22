@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle } from 'lucide-react';
-import type { BuyerCardData } from '@/types';
+import type { OfferCardData } from './types';
 
 interface HeaderProps {
-    data: BuyerCardData & { customStatus?: string };
+    data: OfferCardData & { customStatus?: string };
     isInactive?: boolean;
 }
 
@@ -76,7 +76,7 @@ export function Header({ data, isInactive }: HeaderProps) {
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-neutral-800 to-neutral-950 border border-neutral-800 flex items-center justify-center select-none shrink-0">
                         <span className="text-xs font-black text-zinc-500 uppercase">
-                            {data.sellerName.slice(0, 2)}
+                            {data.sellerName?.slice(0, 2)}
                         </span>
                     </div>
                     <div className="flex flex-col min-w-0">
@@ -90,31 +90,11 @@ export function Header({ data, isInactive }: HeaderProps) {
                 </div>
 
                 <div className="flex flex-col items-end justify-center select-none text-right">
-                    {isInactive ? (
-                        <span className="text-base font-black text-zinc-500 font-mono tracking-tight leading-none">
-                            {data.isCountered ? data.sellerCounterOffer : data.productPrice}
-                        </span>
-                    ) : isExpired ? (
-                        <span className="text-base font-black text-zinc-600 font-mono tracking-tight line-through leading-none">
-                            {data.isCountered ? data.sellerCounterOffer : data.productPrice}
-                        </span>
-                    ) : data.isCountered ? (
-                        <div className="flex flex-col items-end justify-center">
-                            <span className="text-[10px] font-bold text-red-500 line-through font-mono leading-none mb-1">
-                                {data.buyerOriginalOffer}
-                            </span>
-                            <span className="text-base font-black text-amber-400 font-mono tracking-tight leading-none">
-                                {data.sellerCounterOffer}
-                            </span>
-                        </div>
-                    ) : (
-                        <span className="text-base font-black text-emerald-400 font-mono tracking-tight whitespace-nowrap leading-none">
-                            {data.productPrice}
-                        </span>
-                    )}
-
-                    <span className={`text-[8px] font-mono tracking-wider font-medium mt-1 transition-colors duration-300 ${timerColorClass}`}>
+                    <span className={`text-[10px] font-mono tracking-wider font-medium transition-colors duration-300 ${timerColorClass}`}>
                         {formatTime(timeLeft)}
+                    </span>
+                    <span className="text-[8px] font-mono tracking-wider font-medium text-zinc-500 mt-1">
+                        left
                     </span>
                 </div>
             </div>

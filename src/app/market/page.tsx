@@ -2,11 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import { generateFiveMockCards } from '@/lib/mocks/sales-card';
-import type { SalesCardData, Order } from '@/types';
+import type { MarketCardData, Order } from '@/types';
 import { recordOfficeEvent } from '@/lib/office-history';
+import { useNegotiationContext } from '@/context/NegotiationContext';
 
-const SalesCard = dynamic(() => import('@/components/sales-card'), {
+const MarketCard = dynamic(() => import('@/components/market-card'), {
   ssr: false,
   loading: () => <div className="h-40 bg-neutral-900/20 rounded animate-pulse" />,
 });
@@ -19,10 +19,25 @@ function generateOrderId() {
 }
 
 export default function MarketPage() {
-  const [salesCards] = useState<SalesCardData[]>(generateFiveMockCards());
+  const [marketCards, setMarketCards] = useState<MarketCardData[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const { startBuyerBuy, startBuyerCounter } = useNegotiationContext();
 
   useEffect(() => {
+    const loadData = async () => {
+      try {
+        const response = await fetch('/api/market');
+        if (!response.ok) throw new Error('Request failed');
+        const cards = (await response.json()) as MarketCardData[];
+        setMarketCards(cards);
+      } catch (error) {
+        console.error('Failed to load market cards from database', error);
+        setMarketCards([]);
+      }
+    };
+
+    loadData();
+
     const stored = localStorage.getItem('orders');
     if (stored) {
       try {
@@ -38,9 +53,20 @@ export default function MarketPage() {
     localStorage.setItem('orders', JSON.stringify(orders));
   }, [orders]);
 
-  const visibleSalesCards = salesCards.filter((card) => (card.offersCount ?? 0) < 12);
+  const visibleMarketCards = marketCards.filter((card) => (card.offersCount ?? 0) < 12);
 
-  const handleBuy = (card: SalesCardData) => {
+  const handleBuy = (card: MarketCardData) => {
+    const session = startBuyerBuy({
+      id: card.id,
+      itemType: 'market',
+      productPrice: card.productPriceRaw,
+      sellerName: card.sellerName,
+      buyerName: BUYER_NAME,
+      description: card.description,
+    });
+
+    if (!session) return;
+
     const newOrder: Order = {
       id: generateOrderId(),
       type: 'buy',
@@ -54,9 +80,22 @@ export default function MarketPage() {
       status: 'pending',
     };
     setOrders((prev) => [...prev, newOrder]);
+    recordOfficeEvent({ type: 'offer', title: 'Buy request sent', description: `Buyer initiated a purchase request for ${card.sellerName}.`, status: 'pending' });
   };
 
-  const handleCounter = (card: SalesCardData, offeredPrice: number) => {
+  const handleCounter = (card: MarketCardData, offeredPrice: number) => {
+    const session = startBuyerCounter({
+      id: card.id,
+      itemType: 'market',
+      productPrice: card.productPriceRaw,
+      price: offeredPrice,
+      sellerName: card.sellerName,
+      buyerName: BUYER_NAME,
+      description: card.description,
+    });
+
+    if (!session) return;
+
     const newOrder: Order = {
       id: generateOrderId(),
       type: 'counter',
@@ -71,6 +110,7 @@ export default function MarketPage() {
       status: 'pending',
     };
     setOrders((prev) => [...prev, newOrder]);
+    recordOfficeEvent({ type: 'offer', title: 'Counter submitted', description: `Buyer submitted a counter offer for ${card.sellerName}.`, status: 'pending' });
   };
 
   return (
@@ -88,15 +128,15 @@ export default function MarketPage() {
 
       <main className="flex-1 py-12 px-4">
         <div className="max-w-7xl mx-auto">
-          {visibleSalesCards.length === 0 ? (
+          {visibleMarketCards.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-neutral-300 bg-white/70 p-8 text-center text-muted-foreground">
               No active market listings are available right now.
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {visibleSalesCards.map((card) => (
+              {visibleMarketCards.map((card) => (
                   <div key={card.id} className="h-fit">
-                    <SalesCard
+                    <MarketCard
                       cardData={card}
                       onBuyClick={() => handleBuy(card)}
                       onCounterSubmit={(price) => handleCounter(card, price)}

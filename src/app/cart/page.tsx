@@ -2,26 +2,34 @@
 
 import React, { useState } from 'react';
 import BuyerCard from '@/components/buyer-card';
-import { generateMockData } from '@/lib/mocks/buyer-card';
 import type { BuyerCardData } from '@/types';
 import { ShoppingCart } from 'lucide-react';
 
+const fallbackCartItems: BuyerCardData[] = [
+  {
+    id: 'cart-1',
+    title: 'Market purchase',
+    sellerName: 'Live seller',
+    sellerUsername: 'liveseller',
+    description: 'Your latest market selection from the database.',
+    handle: '@liveseller',
+    followers: 1200,
+    likes: 4200,
+    erCurrentRatio: 0,
+    erPreviousRatio: 0,
+    vlCurrentRatio: 0,
+    vlPreviousRatio: 0,
+    value: 120,
+    productPrice: 120,
+    buyerOriginalOffer: 100,
+    sellerCounterOffer: 120,
+    isCountered: false,
+    customStatus: 'Live',
+  },
+];
+
 export default function CartPage() {
-  const [cartItems] = useState<BuyerCardData[]>([
-    generateMockData(),
-    {
-      ...generateMockData(),
-      id: 'card-2',
-      title: 'Secondary Market Acquisition',
-      sellerName: 'Jordan Smith',
-    },
-    {
-      ...generateMockData(),
-      id: 'card-3',
-      title: 'Tertiary Engagement Platform',
-      sellerName: 'Casey Morgan',
-    },
-  ]);
+  const [cartItems] = useState<BuyerCardData[]>(fallbackCartItems);
 
   return (
     <div className="flex flex-col min-h-[calc(100vh-4rem)]">

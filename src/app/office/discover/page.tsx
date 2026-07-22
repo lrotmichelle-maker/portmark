@@ -4,18 +4,30 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Briefcase, FileText, CircleAlert } from 'lucide-react';
-import { mockJobs } from '@/components/job-card/data';
+import type { JobOffer } from '@/components/job-card/data';
 import { hasSavedCvData, recordOfficeEvent } from '@/lib/office-history';
 
 export default function OfficeDiscoverPage() {
   const router = useRouter();
-  const [jobs, setJobs] = useState(mockJobs.slice(0, 6));
+  const [jobs, setJobs] = useState<JobOffer[]>([]);
 
   useEffect(() => {
-    setJobs(mockJobs.slice(0, 6));
+    const loadJobs = async () => {
+      try {
+        const response = await fetch('/api/discover');
+        if (!response.ok) throw new Error('Request failed');
+        const data = (await response.json()) as JobOffer[];
+        setJobs(data.slice(0, 6));
+      } catch (error) {
+        console.error('Failed to load office discover jobs from database', error);
+        setJobs([]);
+      }
+    };
+
+    loadJobs();
   }, []);
 
-  const handleApply = (job: (typeof mockJobs)[number]) => {
+  const handleApply = (job: JobOffer) => {
     if (!hasSavedCvData()) {
       recordOfficeEvent({
         type: 'application',

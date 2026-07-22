@@ -3,12 +3,11 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ShoppingBag } from 'lucide-react';
-import { generateFiveMockCards } from '@/lib/mocks/sales-card';
-import type { SalesCardData, Order } from '@/types';
+import type { MarketCardData, Order } from '@/types';
 import dynamic from 'next/dynamic';
 import { recordOfficeEvent } from '@/lib/office-history';
 
-const SalesCard = dynamic(() => import('@/components/sales-card'), { ssr: false });
+const MarketCard = dynamic(() => import('@/components/market-card'), { ssr: false });
 
 const BUYER_ID = 'buyer-001';
 const BUYER_NAME = 'You';
@@ -18,10 +17,24 @@ function generateOrderId() {
 }
 
 export default function OfficeMarketPage() {
-  const [salesCards] = useState<SalesCardData[]>(generateFiveMockCards());
+  const [marketCards, setMarketCards] = useState<MarketCardData[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
 
   useEffect(() => {
+    const loadData = async () => {
+      try {
+        const response = await fetch('/api/market');
+        if (!response.ok) throw new Error('Request failed');
+        const cards = (await response.json()) as MarketCardData[];
+        setMarketCards(cards);
+      } catch (error) {
+        console.error('Failed to load market cards from database', error);
+        setMarketCards([]);
+      }
+    };
+
+    loadData();
+
     const stored = localStorage.getItem('orders');
     if (stored) {
       try {
@@ -32,9 +45,9 @@ export default function OfficeMarketPage() {
     }
   }, []);
 
-  const visibleSalesCards = salesCards.filter((card) => (card.offersCount ?? 0) < 12);
+  const visibleMarketCards = marketCards.filter((card) => (card.offersCount ?? 0) < 12);
 
-  const handleBuy = (card: SalesCardData) => {
+  const handleBuy = (card: MarketCardData) => {
     const newOrder: Order = {
       id: generateOrderId(),
       type: 'buy',
@@ -51,7 +64,7 @@ export default function OfficeMarketPage() {
     recordOfficeEvent({ type: 'market', title: 'Market order placed', description: `You placed an order for ${card.description}.`, status: 'submitted' });
   };
 
-  const handleCounter = (card: SalesCardData, offeredPrice: number) => {
+  const handleCounter = (card: MarketCardData, offeredPrice: number) => {
     const newOrder: Order = {
       id: generateOrderId(),
       type: 'counter',
@@ -101,9 +114,9 @@ export default function OfficeMarketPage() {
           </div>
 
           <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
-            {visibleSalesCards.map((card) => (
+            {visibleMarketCards.map((card) => (
               <div key={card.id} className="h-fit">
-                <SalesCard
+                <MarketCard
                   cardData={card}
                   onBuyClick={() => handleBuy(card)}
                   onCounterSubmit={(price) => handleCounter(card, price)}

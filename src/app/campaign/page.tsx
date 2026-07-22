@@ -1,74 +1,13 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import CampaignCard from '@/components/campaign-card';
-import type { CampaignCardData } from '@/types/campaign-card';
+import type { CampaignCardData } from '@/types/campaign';
 import { Plus } from 'lucide-react';
 import { recordOfficeEvent } from '@/lib/office-history';
 
-// Mock data for demonstration
-const initialCampaigns: CampaignCardData[] = [
-  {
-    id: '1',
-    publisherProfileIcon: '/path/to/publisher1.jpg',
-    projectName: 'Summer Fashion Campaign',
-    publisherUsername: 'fashionista',
-    publisherRating: 4.8,
-    timeRemainingDays: 10,
-    nicheHashtag: 'fashion, summer, style',
-    description: 'Looking for influencers to promote our new summer collection. Must have a strong engagement in fashion.',
-    category: 'Lifestyle',
-    status: 'Active',
-    communitySize: 150000,
-    viewsGenerated: 1200000,
-    likesGenerated: 80000,
-    totalBudget: 5000,
-    budgetUsed: 1500,
-    highestMcp: 250,
-    hasJoined: false,
-  },
-  {
-    id: '2',
-    publisherProfileIcon: '/path/to/publisher2.jpg',
-    projectName: 'Gaming Gear Launch',
-    publisherUsername: 'gamepro',
-    publisherRating: 4.5,
-    timeRemainingDays: 5,
-    nicheHashtag: 'gaming, tech, review',
-    description: 'Seeking gamers to review our new line of gaming peripherals. High reach on Twitch/YouTube preferred.',
-    category: 'Gaming',
-    status: 'Active',
-    communitySize: 300000,
-    viewsGenerated: 3500000,
-    likesGenerated: 150000,
-    totalBudget: 10000,
-    budgetUsed: 8000,
-    highestMcp: 500,
-    hasJoined: true,
-  },
-  {
-    id: '3',
-    publisherProfileIcon: '/path/to/publisher3.jpg',
-    projectName: 'Tech Review Podcast',
-    publisherUsername: 'techguru',
-    publisherRating: 4.2,
-    timeRemainingDays: 1,
-    nicheHashtag: 'tech, podcast, review',
-    description: 'Looking for creators to share and review our new technology podcast episode.',
-    category: 'Technology',
-    status: 'Paused',
-    communitySize: 85000,
-    viewsGenerated: 92000,
-    likesGenerated: 4500,
-    totalBudget: 2000,
-    budgetUsed: 1800,
-    highestMcp: 150,
-    hasJoined: false,
-  },
-];
-
 export default function CampaignPage() {
-  const [campaigns, setCampaigns] = useState<CampaignCardData[]>(initialCampaigns);
+  const [campaigns, setCampaigns] = useState<CampaignCardData[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState({
@@ -84,6 +23,22 @@ export default function CampaignPage() {
     label: string;
     count: number;
   } | null>(null);
+
+  useEffect(() => {
+    const loadCampaigns = async () => {
+      try {
+        const response = await fetch('/api/campaigns');
+        if (!response.ok) throw new Error('Request failed');
+        const data = (await response.json()) as CampaignCardData[];
+        setCampaigns(data);
+      } catch (error) {
+        console.error('Failed to load campaigns from database', error);
+        setCampaigns([]);
+      }
+    };
+
+    loadCampaigns();
+  }, []);
 
   const triggerCounterPopover = (label: string, count: number) => {
     setPopover({

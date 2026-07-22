@@ -2,9 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import type { Offer, Order } from '@/types';
-import { Check, RefreshCw, X } from 'lucide-react';
 import { recordOfficeEvent } from '@/lib/office-history';
-import { generateMockOffers, generateMockOrders } from '@/lib/mocks';
+import OfferCard from '@/components/offer-card';
+import { addNotification, createNotification, getUnreadNotificationCount, markAllNotificationsRead, type AppNotification } from '@/lib/notifications';
+import { createNegotiationEvent, type NegotiationEvent } from '@/lib/negotiation';
+import { useNegotiationContext } from '@/context/NegotiationContext';
 
 type BuyerOfferAction = 'view' | 'counter' | null;
 
@@ -15,43 +17,48 @@ export default function OffersPage() {
   const [allOffers, setAllOffers] = useState<Offer[]>([]);
   const [allOrders, setAllOrders] = useState<Order[]>([]);
   const [offerActions, setOfferActions] = useState<Record<string, BuyerOfferAction>>({});
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [negotiations, setNegotiations] = useState<NegotiationEvent[]>([]);
+  const { startBuyerBuy, startBuyerCounter, notificationCount, markAllNotificationsRead: markAllRead, getSessionLabel } = useNegotiationContext();
 
   useEffect(() => {
+    const loadNegotiations = async () => {
+      try {
+        const response = await fetch('/api/negotiations');
+        if (!response.ok) throw new Error('Request failed');
+        const data = await response.json() as { orders: Order[]; offers: Offer[] };
+        if (data.orders?.length) setAllOrders(data.orders);
+        if (data.offers?.length) setAllOffers(data.offers);
+      } catch (error) {
+        console.error('Failed to load negotiation data from database', error);
+      }
+    };
+
     const offersStored = localStorage.getItem('offers');
     if (offersStored) {
       try {
-        setAllOffers(JSON.parse(offersStored));
+        const parsedOffers = JSON.parse(offersStored);
+        if (Array.isArray(parsedOffers) && parsedOffers.length > 0) {
+          setAllOffers(parsedOffers);
+        }
       } catch (e) {
         console.error('Failed to parse offers from localStorage', e);
-        // Initialize with mock data on error
-        const mockOffers = generateMockOffers();
-        setAllOffers(mockOffers);
-        localStorage.setItem('offers', JSON.stringify(mockOffers));
       }
-    } else {
-      // Initialize with mock data if empty
-      const mockOffers = generateMockOffers();
-      setAllOffers(mockOffers);
-      localStorage.setItem('offers', JSON.stringify(mockOffers));
     }
 
     const ordersStored = localStorage.getItem('orders');
     if (ordersStored) {
       try {
-        setAllOrders(JSON.parse(ordersStored));
+        const parsedOrders = JSON.parse(ordersStored);
+        if (Array.isArray(parsedOrders) && parsedOrders.length > 0) {
+          setAllOrders(parsedOrders);
+        }
       } catch (e) {
         console.error('Failed to parse orders from localStorage', e);
-        // Initialize with mock data on error
-        const mockOrders = generateMockOrders();
-        setAllOrders(mockOrders);
-        localStorage.setItem('orders', JSON.stringify(mockOrders));
       }
-    } else {
-      // Initialize with mock data if empty
-      const mockOrders = generateMockOrders();
-      setAllOrders(mockOrders);
-      localStorage.setItem('orders', JSON.stringify(mockOrders));
     }
+
+    loadNegotiations();
   }, []);
 
   useEffect(() => {
@@ -61,6 +68,14 @@ export default function OffersPage() {
   useEffect(() => {
     localStorage.setItem('orders', JSON.stringify(allOrders));
   }, [allOrders]);
+
+  useEffect(() => {
+    localStorage.setItem('notifications', JSON.stringify(notifications));
+  }, [notifications]);
+
+  useEffect(() => {
+    localStorage.setItem('negotiations', JSON.stringify(negotiations));
+  }, [negotiations]);
 
   const handleOfferAction = (id: string, action: BuyerOfferAction) => {
     setOfferActions((prev) => ({ ...prev, [id]: action }));
@@ -83,6 +98,18 @@ export default function OffersPage() {
           o.id === offer.orderId ? { ...o, status: 'accepted' } : o
         )
       );
+      setNotifications((prev) => addNotification(prev, createNotification({
+        title: 'Offer accepted',
+        message: `You accepted a seller offer for ${order.id}.`,
+        category: 'offer',
+        relatedId: offerId,
+        actor: 'buyer',
+        status: 'accepted',
+      })));
+      setNegotiations((prev) => [
+        ...prev,
+        createNegotiationEvent(order.id, 'buyer', offer.responsePrice ?? order.productPriceRaw, 'Buyer accepted the seller offer.'),
+      ]);
       recordOfficeEvent({ type: 'offer', title: 'Offer accepted', description: 'You accepted a seller offer and closed the order.', status: 'accepted' });
       handleOfferAction(offerId, null);
     }
@@ -108,6 +135,18 @@ export default function OffersPage() {
     };
 
     setAllOrders((prev) => [...prev, newOrder]);
+    setNotifications((prev) => addNotification(prev, createNotification({
+      title: 'Offer countered',
+      message: `You countered the seller offer with ${counterPrice.toLocaleString()}.`,
+      category: 'negotiation',
+      relatedId: newOrder.id,
+      actor: 'buyer',
+      status: 'countered',
+    })));
+    setNegotiations((prev) => [
+      ...prev,
+      createNegotiationEvent(newOrder.id, 'buyer', counterPrice, 'Buyer sent a counter proposal.'),
+    ]);
     recordOfficeEvent({ type: 'offer', title: 'Offer countered', description: 'You countered a seller offer and created a new order.', status: 'pending' });
 
     // Mark this offer as received (buyer countered rather than accepted)
@@ -126,6 +165,14 @@ export default function OffersPage() {
         o.id === offerId ? { ...o, status: 'rejected' } : o
       )
     );
+    setNotifications((prev) => addNotification(prev, createNotification({
+      title: 'Offer declined',
+      message: 'You declined the seller offer and closed the conversation.',
+      category: 'offer',
+      relatedId: offerId,
+      actor: 'buyer',
+      status: 'rejected',
+    })));
     recordOfficeEvent({ type: 'offer', title: 'Offer declined', description: 'You declined a seller offer.', status: 'rejected' });
     handleOfferAction(offerId, null);
   };
@@ -135,7 +182,31 @@ export default function OffersPage() {
 
   return (
     <div className="py-10 px-4 max-w-6xl mx-auto">
-      <h1 className="text-3xl font-bold mb-6">Offers</h1>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-3xl font-bold">Offers</h1>
+        <div className="flex items-center gap-3 rounded-full border border-neutral-800 bg-neutral-950/70 px-3 py-2 text-sm text-zinc-300">
+          <span>{getUnreadNotificationCount(notifications)} new updates</span>
+          <button
+            type="button"
+            onClick={() => setNotifications((prev) => markAllNotificationsRead(prev))}
+            className="rounded-full border border-neutral-700 px-2 py-1 text-xs uppercase tracking-[0.2em] text-zinc-400"
+          >
+            Mark all read
+          </button>
+        </div>
+      </div>
+
+      <div className="mb-6 rounded-2xl border border-neutral-800 bg-neutral-950/60 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-white">Notification manager</p>
+            <p className="text-sm text-zinc-400">Buyer and seller actions now update the shared notification stream and negotiation log.</p>
+          </div>
+          <div className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-amber-300">
+            {negotiations.length} negotiation events
+          </div>
+        </div>
+      </div>
 
       {buyerOffers.length === 0 ? (
         <div className="text-center py-12 text-zinc-400">
@@ -147,84 +218,37 @@ export default function OffersPage() {
             const originalOrder = allOrders.find((o) => o.id === offer.orderId);
 
             return (
-              <div
+              <OfferCard
                 key={offer.id}
-                className="bg-black border border-neutral-800 rounded-2xl p-4 h-full flex flex-col"
-              >
-                {/* Header */}
-                <div className="space-y-2 pb-4 border-b border-neutral-800">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="text-sm text-zinc-400">From</div>
-                      <div className="font-semibold text-white">{offer.sellerName}</div>
-                    </div>
-                    <div className="text-xs font-mono uppercase text-emerald-500">
-                      Response
-                    </div>
-                  </div>
-                </div>
-
-                {/* Offer Details */}
-                <div className="space-y-3 py-4 flex-1">
-                  <div>
-                    <div className="text-xs text-zinc-500 uppercase">Response Type</div>
-                    <div className="text-sm text-white capitalize">{offer.type}</div>
-                  </div>
-
-                  {offer.type === 'counter' && offer.responsePrice !== undefined ? (
-                    <div>
-                      <div className="text-xs text-zinc-500 uppercase">Offered Price</div>
-                      <div className="text-sm text-emerald-400 font-semibold">
-                        ${offer.responsePrice.toFixed(2)}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {originalOrder && (
-                    <>
-                      <div>
-                        <div className="text-xs text-zinc-500 uppercase">Your Original Offer</div>
-                        <div className="text-sm text-white capitalize">{originalOrder.type}</div>
-                      </div>
-
-                      <div>
-                        <div className="text-xs text-zinc-500 uppercase">Original Price</div>
-                        <div className="text-sm text-white">${originalOrder.productPriceRaw.toFixed(2)}</div>
-                      </div>
-
-                      {originalOrder.offeredPrice !== undefined && (
-                        <div>
-                          <div className="text-xs text-zinc-500 uppercase">Your Offer</div>
-                          <div className="text-sm text-amber-400">${originalOrder.offeredPrice.toFixed(2)}</div>
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  <div>
-                    <div className="text-xs text-zinc-500 uppercase">Received</div>
-                    <div className="text-xs text-zinc-400">
-                      {new Date(offer.createdAt).toLocaleDateString()}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="mt-auto pt-4">
-                  <BuyerOfferActions
-                    offerId={offer.id}
-                    offerType={offer.type}
-                    responsePrice={offer.responsePrice}
-                    onAccept={() => handleBuyerAcceptOffer(offer.id)}
-                    onCounter={(price) => {
-                      handleBuyerCounterOffer(offer.id, price);
-                    }}
-                    onDecline={() => handleBuyerDeclineOffer(offer.id)}
-                    activeAction={offerActions[offer.id]}
-                    onCounterToggle={() => handleOfferAction(offer.id, offerActions[offer.id] === 'counter' ? null : 'counter')}
-                  />
-                </div>
-              </div>
+                data={{
+                  id: offer.id,
+                  sellerName: offer.sellerName,
+                  sellerUsername: offer.buyerName.toLowerCase().replace(/\s+/g, ''),
+                  type: offer.type,
+                  responsePrice: offer.responsePrice,
+                  originalPrice: originalOrder?.productPriceRaw,
+                  originalOfferType: originalOrder?.type,
+                  yourOffer: originalOrder?.offeredPrice,
+                  receivedAt: offer.createdAt,
+                  handle: offer.handle ?? `@${(offer.sellerName || offer.buyerName).toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, '')}`,
+                  hashtags: offer.hashtags,
+                  followers: Math.max(originalOrder?.followers ?? offer.followers ?? 3000, 3000),
+                  likes: Math.max(originalOrder?.likes ?? offer.likes ?? 12000, 12000),
+                  erCurrentRatio: originalOrder?.erCurrentRatio ?? offer.erCurrentRatio ?? 0,
+                  erPreviousRatio: originalOrder?.erPreviousRatio ?? offer.erPreviousRatio ?? 0,
+                  vlCurrentRatio: originalOrder?.vlCurrentRatio ?? offer.vlCurrentRatio ?? 0,
+                  vlPreviousRatio: originalOrder?.vlPreviousRatio ?? offer.vlPreviousRatio ?? 0,
+                  value: Math.max(originalOrder?.value ?? offer.value ?? 40, 40),
+                  productPrice: originalOrder?.productPriceRaw,
+                }}
+                onAccept={() => handleBuyerAcceptOffer(offer.id)}
+                onCounter={(price) => {
+                  handleBuyerCounterOffer(offer.id, price);
+                }}
+                onDecline={() => handleBuyerDeclineOffer(offer.id)}
+                activeAction={offerActions[offer.id]}
+                onCounterToggle={() => handleOfferAction(offer.id, offerActions[offer.id] === 'counter' ? null : 'counter')}
+              />
             );
           })}
         </div>
@@ -233,137 +257,3 @@ export default function OffersPage() {
   );
 }
 
-function BuyerOfferActions({
-  offerId,
-  offerType,
-  responsePrice: _responsePrice,
-  onAccept,
-  onCounter,
-  onDecline,
-  activeAction,
-  onCounterToggle,
-}: {
-  offerId: string;
-  offerType: 'accept' | 'counter';
-  responsePrice?: number;
-  onAccept: () => void;
-  onCounter: (price: number) => void;
-  onDecline: () => void;
-  activeAction: BuyerOfferAction;
-  onCounterToggle: () => void;
-}) {
-  const [counterPrice, setCounterPrice] = useState<string>('');
-
-  const getBtnClasses = (color: 'red' | 'amber' | 'emerald', isActive: boolean) => {
-    const base =
-      'group flex items-center justify-center gap-1 py-2 px-2 border rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-150 active:scale-[0.98] truncate';
-    const themes = {
-      red: 'bg-transparent text-red-500 border-red-900/40 hover:bg-red-600 hover:text-white hover:border-red-500 active:bg-red-600 active:text-white',
-      amber:
-        'bg-transparent text-amber-500 border-amber-900/40 hover:bg-amber-500 hover:text-white hover:border-amber-500 active:bg-amber-500 active:text-white',
-      emerald:
-        'bg-transparent text-emerald-400 border-emerald-900/40 hover:bg-emerald-600 hover:text-white hover:border-emerald-500 active:bg-emerald-600 active:text-white',
-    };
-    const activeClass = isActive ? 'bg-white/10 shadow-[0_0_0_1px_rgba(255,255,255,0.08)]' : '';
-    return `${base} ${themes[color]} ${activeClass}`;
-  };
-
-  // For accept offers, just show Accept/Decline buttons
-  if (offerType === 'accept') {
-    return (
-      <div className="w-full select-none">
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={onDecline}
-            className={getBtnClasses('red', false)}
-          >
-            <X className="w-3 h-3 shrink-0 stroke-[3]" />
-            Decline
-          </button>
-
-          <button
-            type="button"
-            onClick={onAccept}
-            className={getBtnClasses('emerald', false)}
-          >
-            <Check className="w-3 h-3 shrink-0 stroke-[3]" />
-            Accept
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // For counter offers with counter input shown
-  if (activeAction === 'counter') {
-    return (
-      <div className="space-y-2">
-        <input
-          type="number"
-          placeholder="Counter price"
-          value={counterPrice}
-          onChange={(e) => setCounterPrice(e.target.value)}
-          className="w-full bg-neutral-900 border border-neutral-800 rounded p-2 text-sm text-white placeholder-zinc-500"
-        />
-        <div className="flex gap-2">
-          <button
-            onClick={() => {
-              const price = parseFloat(counterPrice);
-              if (!isNaN(price) && price > 0) {
-                onCounter(price);
-                setCounterPrice('');
-              }
-            }}
-            className="flex-1 py-2 px-2 rounded bg-amber-500/10 hover:bg-amber-500 text-amber-500 hover:text-white transition-colors text-xs font-bold"
-          >
-            Send Counter
-          </button>
-          <button
-            onClick={() => {
-              setCounterPrice('');
-              onCounterToggle();
-            }}
-            className="py-2 px-2 rounded bg-neutral-900/60 hover:bg-neutral-800 text-zinc-400 transition-colors text-xs font-bold"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // For counter offers - show three buttons
-  return (
-    <div className="w-full select-none">
-      <div className="grid grid-cols-3 gap-2">
-        <button
-          type="button"
-          onClick={onDecline}
-          className={getBtnClasses('red', false)}
-        >
-          <X className="w-3 h-3 shrink-0 stroke-[3]" />
-          Decline
-        </button>
-
-        <button
-          type="button"
-          onClick={onCounterToggle}
-          className={getBtnClasses('amber', false)}
-        >
-          <RefreshCw className="w-3 h-3 shrink-0 stroke-[3]" />
-          Counter
-        </button>
-
-        <button
-          type="button"
-          onClick={onAccept}
-          className={getBtnClasses('emerald', false)}
-        >
-          <Check className="w-3 h-3 shrink-0 stroke-[3]" />
-          Accept
-        </button>
-      </div>
-    </div>
-  );
-}

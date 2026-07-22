@@ -13,8 +13,8 @@ const navLinks = [
 ]
 
 export default function Navbar() {
-    const [notificationCount, setNotificationCount] = React.useState(24)
-    const [cartCount, setCartCount] = React.useState(7)
+    const [notificationCount, setNotificationCount] = React.useState(0)
+    const [cartCount, setCartCount] = React.useState(0)
     const [isNotificationSeen, setIsNotificationSeen] = React.useState(false)
     const [isCartSeen, setIsCartSeen] = React.useState(false)
     const [isMenuOpen, setIsMenuOpen] = React.useState(false)
@@ -22,6 +22,18 @@ export default function Navbar() {
 
     const formatBadgeCount = (count: number) => (count > 99 ? "99+" : String(count))
     const shouldShowBadge = (count: number, hasBeenSeen: boolean) => count > 0 && !hasBeenSeen
+
+    React.useEffect(() => {
+        const storedOrders = localStorage.getItem('orders')
+        const storedOffers = localStorage.getItem('offers')
+        const orders = storedOrders ? JSON.parse(storedOrders) : []
+        const offers = storedOffers ? JSON.parse(storedOffers) : []
+        const unviewedOffers = offers.filter((offer: { status: string }) => offer.status === 'sent' || offer.status === 'received').length
+        const unviewedOrders = orders.filter((order: { status: string }) => order.status === 'pending').length
+        const totalUnviewed = unviewedOffers + unviewedOrders
+        setNotificationCount(totalUnviewed)
+        setCartCount(unviewedOffers)
+    }, [])
 
     React.useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -35,17 +47,13 @@ export default function Navbar() {
     }, [isMenuOpen])
 
     const handleCartClick = () => {
-        if (cartCount > 0) {
-            setIsCartSeen(true)
-            setCartCount((prev) => prev)
-        }
+        setIsCartSeen(true)
+        setCartCount(0)
     }
 
     const handleNotificationClick = () => {
-        if (notificationCount > 0) {
-            setIsNotificationSeen(true)
-            setNotificationCount((prev) => prev)
-        }
+        setIsNotificationSeen(true)
+        setNotificationCount(0)
     }
 
     const closeMenu = () => setIsMenuOpen(false)

@@ -1,9 +1,9 @@
 import React from 'react';
 import { AlertTriangle } from 'lucide-react';
-import type { BuyerCardData } from '@/types';
+import type { OfferCardData } from './types';
 
 interface SentimentProps {
-    data: BuyerCardData;
+    data: OfferCardData;
     isInactive?: boolean;
 }
 

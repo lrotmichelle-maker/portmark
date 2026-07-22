@@ -44,6 +44,8 @@ export function CVBuilder() {
         <CurrentTemplate 
           profileData={profileData}
           setProfileData={setProfileData}
+          ImageUploadTrigger={null}
+          DynamicSectionsRender={null}
         />
       </div>
     </div>

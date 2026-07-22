@@ -1,6 +1,6 @@
 import React from 'react';
 import { Check, X } from 'lucide-react';
-import type { CampaignCardData } from '@/types/campaign-card';
+import type { CampaignCardData } from '@/types/campaign';
 
 interface FooterProps {
   data: CampaignCardData;

@@ -1,7 +1,8 @@
 // Central mock data index - import from here
 export { generateMockOffers } from './offers';
 export { generateMockOrders } from './orders';
-export { generateFiveMockCards } from './sales-card';
+export { generateFiveMockCards } from './market-data';
+export type { MarketCardData } from '@/types';
 export { generateMockData } from './buyer-card';
 
 // Combined initialization

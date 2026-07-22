@@ -5,18 +5,18 @@ import Header from './header';
 import Content from './content';
 import Sentiment from './sentiment';
 import Footer from './footer';
-import type { SalesCardData } from '@/types';
+import type { MarketCardData } from '@/types';
 import { formatToUGX } from '@/lib/currency';
 
-interface SalesCardProps {
-    cardData: SalesCardData;
+interface MarketCardProps {
+    cardData: MarketCardData;
     hideFooter?: boolean;
     hideBorder?: boolean;
     onBuyClick?: () => void;
     onCounterSubmit?: (price: number) => void;
 }
 
-export default function SalesCard({ cardData, hideFooter = false, hideBorder = false, onBuyClick, onCounterSubmit }: SalesCardProps) {
+export default function MarketCard({ cardData, hideFooter = false, hideBorder = false, onBuyClick, onCounterSubmit }: MarketCardProps) {
     const productPrice = cardData.productPriceRaw;
     const minPrice = productPrice * 0.6;
     const maxPrice = productPrice * 1.5;

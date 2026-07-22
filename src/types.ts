@@ -1,6 +1,6 @@
-export type OrderStatus = 'pending' | 'accepted' | 'countered';
+export type OrderStatus = 'pending' | 'accepted' | 'countered' | 'declined' | 'completed';
 export type OfferType = 'accept' | 'counter';
-export type OfferStatus = 'sent' | 'received' | 'accepted' | 'rejected';
+export type OfferStatus = 'sent' | 'received' | 'accepted' | 'rejected' | 'declined' | 'completed';
 
 export interface Order {
   id: string;
@@ -12,8 +12,17 @@ export interface Order {
   productPriceRaw: number;
   offeredPrice?: number;
   description?: string;
+  handle?: string;
+  hashtags?: string[];
   status: OrderStatus;
   createdAt: string;
+  followers?: number;
+  likes?: number;
+  erCurrentRatio?: number;
+  erPreviousRatio?: number;
+  vlCurrentRatio?: number;
+  vlPreviousRatio?: number;
+  value?: number;
 }
 
 export interface Offer {
@@ -26,46 +35,47 @@ export interface Offer {
   fromSeller: boolean;
   sellerName: string;
   buyerName: string;
+  description?: string;
+  handle?: string;
+  hashtags?: string[];
+  followers?: number;
+  likes?: number;
+  erCurrentRatio?: number;
+  erPreviousRatio?: number;
+  vlCurrentRatio?: number;
+  vlPreviousRatio?: number;
+  value?: number;
 }
 
-export interface BuyerCardData {
+interface BaseCardData {
   id: string;
-  title: string;
-  description: string;
-  handle: string;
-  followers: string;
-  value: string;
   sellerName: string;
   sellerUsername: string;
-  productPrice: string;
-  buyerOriginalOffer: string;
-  sellerCounterOffer: string;
-  isCountered: boolean;
+  description: string;
+  handle: string;
+  followers: number;
+  likes: number;
   erCurrentRatio: number;
   erPreviousRatio: number;
   vlCurrentRatio: number;
   vlPreviousRatio: number;
-  likes: string;
   sentimentRate?: number;
+}
+
+export interface BuyerCardData extends BaseCardData {
+  title: string;
+  value: number;
+  productPrice: number;
+  buyerOriginalOffer: number;
+  sellerCounterOffer: number;
+  isCountered: boolean;
   customStatus?: string;
 }
 
-export interface SalesCardData {
-  id: string;
-  sellerName: string;
-  sellerUsername: string;
+export interface MarketCardData extends BaseCardData {
   sellerAvatar?: string;
   productPriceRaw: number;
-  description: string;
-  handle: string;
-  followers: string;
   valueRaw: number;
-  erCurrentRatio: number;
-  erPreviousRatio: number;
-  likes: string;
-  vlCurrentRatio: number;
-  vlPreviousRatio: number;
-  sentimentRate: number;
   sellerBuys: number;
   sellerSells: number;
   sellerStars: number;
@@ -73,3 +83,5 @@ export interface SalesCardData {
   createdAt: string;
   offersCount: number;
 }
+
+export type SalesCardData = MarketCardData;
