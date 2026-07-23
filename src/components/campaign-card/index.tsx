@@ -11,12 +11,16 @@ interface CampaignCardProps {
   data: CampaignCardData;
   onJoinCampaign: (id: string) => void;
   onExitCampaign: (id: string) => void;
+  onPauseCampaign?: (id: string, status: string) => void;
+  onDeleteCampaign?: (id: string) => void;
 }
 
 export default function CampaignCard({
   data,
   onJoinCampaign,
   onExitCampaign,
+  onPauseCampaign,
+  onDeleteCampaign,
 }: CampaignCardProps) {
   const [campaignData, setCampaignData] = useState<CampaignCardData>(data);
 
@@ -46,7 +50,7 @@ export default function CampaignCard({
       </div>
 
       <div className={`flex flex-col gap-4 transition-all duration-300 ${isPaused ? 'opacity-40 grayscale pointer-events-none' : ''}`}>
-        <Header data={campaignData} />
+        <Header data={campaignData} onPause={onPauseCampaign} onDelete={onDeleteCampaign} />
         <Content data={campaignData} />
         <BudgetSentiment data={campaignData} />
       </div>

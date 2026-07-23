@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 import type { ReactNode } from 'react';
 import { addNotification, createNotification, markAllNotificationsRead, type AppNotification } from '@/lib/notifications';
 import { createNegotiationEvent, type NegotiationEvent } from '@/lib/negotiation';
+import { useNotificationContext } from './NotificationContext';
 
 export type NegotiationStatus =
   | 'idle'
@@ -12,7 +13,9 @@ export type NegotiationStatus =
   | 'accepted'
   | 'payment-pending'
   | 'declined'
-  | 'timed-out';
+  | 'timed-out'
+  | 'passed'
+  | 'finalized';
 
 export interface NegotiationSession {
   id: string;
@@ -20,6 +23,7 @@ export interface NegotiationSession {
   itemType: 'market' | 'offer' | 'order';
   status: NegotiationStatus;
   currentValue: number;
+  productPrice: number;
   buyerCounterCount: number;
   sellerCounterCount: number;
   buyerBuyCountToday: number;
@@ -57,6 +61,7 @@ interface NegotiationContextType {
   startBuyerCounter: (input: BuyerCounterInput) => NegotiationSession | null;
   sellerRespondToOrder: (orderId: string, action: 'accept' | 'counter' | 'decline', price?: number) => NegotiationSession | null;
   buyerRespondToOffer: (offerId: string, action: 'accept' | 'counter' | 'decline', price?: number) => NegotiationSession | null;
+  finalizeNegotiation: (cardId: string) => NegotiationSession | null;
   getSession: (id: string) => NegotiationSession | undefined;
   getSessionLabel: (id: string) => string;
   getSessionStatus: (id: string) => NegotiationStatus | undefined;
@@ -88,6 +93,10 @@ function formatStatusLabel(status: NegotiationStatus) {
       return 'Declined';
     case 'timed-out':
       return 'Timed out';
+    case 'passed':
+      return 'Passed';
+    case 'finalized':
+      return 'Finalized';
     default:
       return 'Idle';
   }
@@ -105,7 +114,7 @@ function getSellerMaxDiscount(counterCount: number) {
   return 0.35;
 }
 
-function buildSession(input: Partial<NegotiationSession> & Pick<NegotiationSession, 'id' | 'cardId' | 'itemType' | 'status' | 'currentValue' | 'dayKey' | 'lastActionLabel' | 'pendingFor' | 'lastActor'>): NegotiationSession {
+function buildSession(input: Partial<NegotiationSession> & Pick<NegotiationSession, 'id' | 'cardId' | 'itemType' | 'status' | 'currentValue' | 'productPrice' | 'dayKey' | 'lastActionLabel' | 'pendingFor' | 'lastActor'>): NegotiationSession {
   const now = new Date().toISOString();
   return {
     id: input.id,
@@ -113,6 +122,7 @@ function buildSession(input: Partial<NegotiationSession> & Pick<NegotiationSessi
     itemType: input.itemType,
     status: input.status,
     currentValue: input.currentValue,
+    productPrice: input.productPrice,
     buyerCounterCount: input.buyerCounterCount ?? 0,
     sellerCounterCount: input.sellerCounterCount ?? 0,
     buyerBuyCountToday: input.buyerBuyCountToday ?? 0,
@@ -131,6 +141,7 @@ export function NegotiationProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<Record<string, NegotiationSession>>({});
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [events, setEvents] = useState<NegotiationEvent[]>([]);
+  const { orders, offers, updateOrders, updateOffers } = useNotificationContext();
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -161,6 +172,12 @@ export function NegotiationProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(EVENT_STORAGE_KEY, JSON.stringify(events));
   }, [events]);
 
+  const pushNotification = (notification: Omit<AppNotification, 'id' | 'createdAt' | 'read'>) => {
+    const next = addNotification(notifications, createNotification(notification));
+    setNotifications(next);
+    setEvents((prev) => [...prev, createNegotiationEvent(notification.relatedId ?? 'system', notification.actor, 0, notification.message)]);
+  };
+
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
 
@@ -173,42 +190,68 @@ export function NegotiationProvider({ children }: { children: ReactNode }) {
           const pending = session.status === 'buyer-pending' || session.status === 'seller-pending' || session.status === 'payment-pending';
           const expired = session.updatedAt && now - new Date(session.updatedAt).getTime() > DAY_IN_MS;
           const paymentExpired = session.paymentDueAt ? now > new Date(session.paymentDueAt).getTime() : false;
-          const shouldTimeout = pending && (expired || paymentExpired);
-          if (shouldTimeout) {
+          
+          if (pending && (expired || paymentExpired)) {
+            let newStatus: NegotiationStatus = 'timed-out';
+            let label = 'Timed out due to inactivity';
+            let notifyTitle = 'Negotiation timed out';
+            let notifyMsg = `The negotiation for card ${session.cardId} timed out.`;
+            
+            if (session.status === 'buyer-pending' || session.status === 'seller-pending') {
+              newStatus = 'passed';
+              label = 'Passed due to no response';
+              notifyTitle = 'Negotiation passed';
+              notifyMsg = `The negotiation for card ${session.cardId} passed after no response within 1 day.`;
+            }
+
             next[id] = {
               ...session,
-              status: 'timed-out',
+              status: newStatus,
               pendingFor: null,
-              lastActionLabel: 'Timed out due to inactivity',
+              lastActionLabel: label,
+              cooldownUntil: new Date(now + COOLDOWN_MS).toISOString(),
               updatedAt: new Date().toISOString(),
             };
+
             setNotifications((prevNotifications) => addNotification(prevNotifications, createNotification({
-              title: 'Negotiation timed out',
-              message: `The negotiation for card ${session.cardId} timed out after no response.`,
+              title: notifyTitle,
+              message: notifyMsg,
               category: 'negotiation',
               relatedId: session.cardId,
               actor: 'system',
               status: 'timed-out',
             })));
-            setEvents((prevEvents) => [...prevEvents, createNegotiationEvent(session.cardId, 'system', 0, 'Negotiation timed out due to inactivity.')]);
+
+            setEvents((prevEvents) => [...prevEvents, createNegotiationEvent(session.cardId, 'system', 0, label)]);
+
+            // Sync with orders & offers list
+            const latestOrder = [...orders].reverse().find(o => o.cardId === session.cardId);
+            if (latestOrder) {
+              latestOrder.status = newStatus === 'passed' ? 'passed' : 'timed-out';
+              
+              const latestOffer = [...offers].reverse().find(o => o.orderId === latestOrder.id);
+              if (latestOffer) {
+                latestOffer.status = newStatus === 'passed' ? 'passed' : 'timed-out';
+              }
+            }
+
             changed = true;
           }
         });
+
+        if (changed) {
+          updateOrders([...orders]);
+          updateOffers([...offers]);
+        }
         return changed ? next : prev;
       });
     };
 
     const interval = window.setInterval(tick, 30_000);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [orders, offers]);
 
   const notificationCount = useMemo(() => notifications.filter((item) => !item.read).length, [notifications]);
-
-  const pushNotification = (notification: Omit<AppNotification, 'id' | 'createdAt' | 'read'>) => {
-    const next = addNotification(notifications, createNotification(notification));
-    setNotifications(next);
-    setEvents((prev) => [...prev, createNegotiationEvent(notification.relatedId ?? 'system', notification.actor, 0, notification.message)]);
-  };
 
   const clearNotificationsRead = () => {
     setNotifications((prev) => markAllNotificationsRead(prev));
@@ -233,6 +276,7 @@ export function NegotiationProvider({ children }: { children: ReactNode }) {
       itemType: input.itemType,
       status: 'buyer-pending',
       currentValue: input.productPrice,
+      productPrice: input.productPrice,
       buyerCounterCount: existing?.buyerCounterCount ?? 0,
       sellerCounterCount: existing?.sellerCounterCount ?? 0,
       buyerBuyCountToday: (existing && existing.dayKey === todayKey ? existing.buyerBuyCountToday : 0) + 1,
@@ -253,6 +297,22 @@ export function NegotiationProvider({ children }: { children: ReactNode }) {
       actor: 'buyer',
       status: 'pending',
     });
+
+    // Create Order in shared state
+    const newOrder = {
+      id: `order-${Date.now()}`,
+      type: 'buy' as const,
+      cardId: input.id,
+      buyerId: 'buyer-001',
+      buyerName: input.buyerName ?? 'You',
+      sellerName: input.sellerName,
+      productPriceRaw: input.productPrice,
+      description: input.description,
+      status: 'pending' as const,
+      createdAt: new Date().toISOString(),
+    };
+    updateOrders([...orders, newOrder]);
+
     return nextSession;
   };
 
@@ -264,6 +324,8 @@ export function NegotiationProvider({ children }: { children: ReactNode }) {
     const buyerCounterCount = existing?.buyerCounterCount ?? 0;
     if (buyerCounterCount >= 3) return null;
 
+    if (existing && existing.lastActor === 'buyer') return null; // Alternating counters
+
     const minPrice = input.productPrice * (1 - getBuyerMaxDiscount(buyerCounterCount));
     if (input.price < minPrice) return null;
 
@@ -274,6 +336,7 @@ export function NegotiationProvider({ children }: { children: ReactNode }) {
       itemType: input.itemType,
       status: 'buyer-pending',
       currentValue: input.price,
+      productPrice: input.productPrice,
       buyerCounterCount: buyerCounterCount + 1,
       sellerCounterCount: existing?.sellerCounterCount ?? 0,
       buyerBuyCountToday: (existing && existing.dayKey === todayKey ? existing.buyerBuyCountToday : 0) + 1,
@@ -294,52 +357,57 @@ export function NegotiationProvider({ children }: { children: ReactNode }) {
       actor: 'buyer',
       status: 'countered',
     });
+
+    // Create Order in shared state
+    const newOrder = {
+      id: `order-${Date.now()}`,
+      type: 'counter' as const,
+      cardId: input.id,
+      buyerId: 'buyer-001',
+      buyerName: input.buyerName ?? 'You',
+      sellerName: input.sellerName,
+      productPriceRaw: input.productPrice,
+      offeredPrice: input.price,
+      description: input.description,
+      status: 'pending' as const,
+      createdAt: new Date().toISOString(),
+    };
+    updateOrders([...orders, newOrder]);
+
     return nextSession;
   };
 
   const sellerRespondToOrder = (orderId: string, action: 'accept' | 'counter' | 'decline', price?: number) => {
-    const existing = sessions[orderId];
+    const order = orders.find(o => o.id === orderId);
+    const cardId = order?.cardId ?? orderId;
+    const existing = sessions[cardId];
     if (!existing) return null;
+
     const now = Date.now();
     let nextSession: NegotiationSession;
 
     if (action === 'decline') {
       nextSession = buildSession({
         ...existing,
-        id: existing.id,
-        cardId: existing.cardId,
-        itemType: existing.itemType,
         status: 'declined',
-        currentValue: existing.currentValue,
-        buyerCounterCount: existing.buyerCounterCount,
-        sellerCounterCount: existing.sellerCounterCount,
-        buyerBuyCountToday: existing.buyerBuyCountToday,
-        dayKey: existing.dayKey,
         lastActor: 'seller',
         lastActionLabel: 'Seller declined',
         pendingFor: null,
+        cooldownUntil: new Date(now + COOLDOWN_MS).toISOString(),
         updatedAt: new Date(now).toISOString(),
       });
       pushNotification({
         title: 'Order declined',
         message: 'Seller declined the order and cancelled the negotiation.',
         category: 'order',
-        relatedId: orderId,
+        relatedId: cardId,
         actor: 'seller',
         status: 'declined',
       });
     } else if (action === 'accept') {
       nextSession = buildSession({
         ...existing,
-        id: existing.id,
-        cardId: existing.cardId,
-        itemType: existing.itemType,
         status: 'payment-pending',
-        currentValue: existing.currentValue,
-        buyerCounterCount: existing.buyerCounterCount,
-        sellerCounterCount: existing.sellerCounterCount,
-        buyerBuyCountToday: existing.buyerBuyCountToday,
-        dayKey: existing.dayKey,
         lastActor: 'seller',
         lastActionLabel: 'Seller accepted',
         pendingFor: 'buyer',
@@ -350,27 +418,23 @@ export function NegotiationProvider({ children }: { children: ReactNode }) {
         title: 'Order accepted',
         message: 'Seller accepted the order and buyer must pay within 1 day.',
         category: 'order',
-        relatedId: orderId,
+        relatedId: cardId,
         actor: 'seller',
         status: 'accepted',
       });
     } else {
       const sellerCount = existing.sellerCounterCount;
       if (sellerCount >= 3 || typeof price !== 'number') return null;
-      const minPrice = existing.currentValue * (1 - getSellerMaxDiscount(sellerCount));
+      if (existing.lastActor === 'seller') return null; // Alternating counters
+
+      const minPrice = existing.productPrice * (1 - getSellerMaxDiscount(sellerCount));
       if (price < minPrice) return null;
 
       nextSession = buildSession({
         ...existing,
-        id: existing.id,
-        cardId: existing.cardId,
-        itemType: existing.itemType,
         status: 'seller-pending',
         currentValue: price,
-        buyerCounterCount: existing.buyerCounterCount,
         sellerCounterCount: sellerCount + 1,
-        buyerBuyCountToday: existing.buyerBuyCountToday,
-        dayKey: existing.dayKey,
         lastActor: 'seller',
         lastActionLabel: `Seller counter ${sellerCount + 1}`,
         pendingFor: 'buyer',
@@ -380,59 +444,105 @@ export function NegotiationProvider({ children }: { children: ReactNode }) {
         title: 'Seller countered',
         message: `Seller sent a counter offer of ${price.toLocaleString()} for review.`,
         category: 'negotiation',
-        relatedId: orderId,
+        relatedId: cardId,
         actor: 'seller',
         status: 'countered',
       });
     }
 
-    setSessions((prev) => ({ ...prev, [orderId]: nextSession }));
+    setSessions((prev) => ({ ...prev, [cardId]: nextSession }));
+
+    // Sync state to Notification Context
+    let updatedOrders = [...orders];
+    let updatedOffers = [...offers];
+
+    if (order) {
+      updatedOrders = orders.map(o => o.id === order.id ? { ...o, status: action === 'decline' ? 'declined' : action === 'accept' ? 'accepted' : 'countered' } : o);
+
+      if (action === 'accept') {
+        const newOffer = {
+          id: `offer-${Date.now()}`,
+          orderId: order.id,
+          type: 'accept' as const,
+          createdAt: new Date().toISOString(),
+          status: 'sent' as const,
+          fromSeller: true,
+          sellerName: order.sellerName || 'You',
+          buyerName: order.buyerName,
+          description: order.description,
+          handle: order.handle,
+          followers: order.followers,
+          likes: order.likes,
+          erCurrentRatio: order.erCurrentRatio,
+          erPreviousRatio: order.erPreviousRatio,
+          vlCurrentRatio: order.vlCurrentRatio,
+          vlPreviousRatio: order.vlPreviousRatio,
+          value: order.value,
+        };
+        updatedOffers.push(newOffer);
+      } else if (action === 'counter') {
+        const newOffer = {
+          id: `offer-${Date.now()}`,
+          orderId: order.id,
+          type: 'counter' as const,
+          responsePrice: price,
+          createdAt: new Date().toISOString(),
+          status: 'sent' as const,
+          fromSeller: true,
+          sellerName: order.sellerName || 'You',
+          buyerName: order.buyerName,
+          description: order.description,
+          handle: order.handle,
+          followers: order.followers,
+          likes: order.likes,
+          erCurrentRatio: order.erCurrentRatio,
+          erPreviousRatio: order.erPreviousRatio,
+          vlCurrentRatio: order.vlCurrentRatio,
+          vlPreviousRatio: order.vlPreviousRatio,
+          value: order.value,
+        };
+        updatedOffers.push(newOffer);
+      }
+    }
+
+    updateOrders(updatedOrders);
+    updateOffers(updatedOffers);
+
     return nextSession;
   };
 
   const buyerRespondToOffer = (offerId: string, action: 'accept' | 'counter' | 'decline', price?: number) => {
-    const existing = sessions[offerId];
+    const offer = offers.find(o => o.id === offerId);
+    const order = orders.find(o => o.id === offer?.orderId);
+    const cardId = order?.cardId ?? offerId;
+    const existing = sessions[cardId];
     if (!existing) return null;
+
     const now = Date.now();
     let nextSession: NegotiationSession;
 
     if (action === 'decline') {
       nextSession = buildSession({
         ...existing,
-        id: existing.id,
-        cardId: existing.cardId,
-        itemType: existing.itemType,
         status: 'declined',
-        currentValue: existing.currentValue,
-        buyerCounterCount: existing.buyerCounterCount,
-        sellerCounterCount: existing.sellerCounterCount,
-        buyerBuyCountToday: existing.buyerBuyCountToday,
-        dayKey: existing.dayKey,
         lastActor: 'buyer',
         lastActionLabel: 'Buyer declined',
         pendingFor: null,
+        cooldownUntil: new Date(now + COOLDOWN_MS).toISOString(),
         updatedAt: new Date(now).toISOString(),
       });
       pushNotification({
         title: 'Offer declined',
         message: 'Buyer declined the offer and ended the negotiation.',
         category: 'offer',
-        relatedId: offerId,
+        relatedId: cardId,
         actor: 'buyer',
         status: 'declined',
       });
     } else if (action === 'accept') {
       nextSession = buildSession({
         ...existing,
-        id: existing.id,
-        cardId: existing.cardId,
-        itemType: existing.itemType,
         status: 'payment-pending',
-        currentValue: existing.currentValue,
-        buyerCounterCount: existing.buyerCounterCount,
-        sellerCounterCount: existing.sellerCounterCount,
-        buyerBuyCountToday: existing.buyerBuyCountToday,
-        dayKey: existing.dayKey,
         lastActor: 'buyer',
         lastActionLabel: 'Buyer accepted',
         pendingFor: 'buyer',
@@ -443,27 +553,23 @@ export function NegotiationProvider({ children }: { children: ReactNode }) {
         title: 'Offer accepted',
         message: 'Buyer accepted the offer and payment is due within 1 day.',
         category: 'offer',
-        relatedId: offerId,
+        relatedId: cardId,
         actor: 'buyer',
         status: 'accepted',
       });
     } else {
       const buyerCount = existing.buyerCounterCount;
       if (buyerCount >= 3 || typeof price !== 'number') return null;
-      const minPrice = existing.currentValue * (1 - getBuyerMaxDiscount(buyerCount));
+      if (existing.lastActor === 'buyer') return null; // Alternating counters
+
+      const minPrice = existing.productPrice * (1 - getBuyerMaxDiscount(buyerCount));
       if (price < minPrice) return null;
 
       nextSession = buildSession({
         ...existing,
-        id: existing.id,
-        cardId: existing.cardId,
-        itemType: existing.itemType,
         status: 'buyer-pending',
         currentValue: price,
         buyerCounterCount: buyerCount + 1,
-        sellerCounterCount: existing.sellerCounterCount,
-        buyerBuyCountToday: existing.buyerBuyCountToday,
-        dayKey: existing.dayKey,
         lastActor: 'buyer',
         lastActionLabel: `Buyer counter ${buyerCount + 1}`,
         pendingFor: 'seller',
@@ -473,13 +579,92 @@ export function NegotiationProvider({ children }: { children: ReactNode }) {
         title: 'Buyer countered',
         message: `Buyer submitted a counter offer of ${price.toLocaleString()} on the offer.`,
         category: 'negotiation',
-        relatedId: offerId,
+        relatedId: cardId,
         actor: 'buyer',
         status: 'countered',
       });
     }
 
-    setSessions((prev) => ({ ...prev, [offerId]: nextSession }));
+    setSessions((prev) => ({ ...prev, [cardId]: nextSession }));
+
+    // Sync state back to Notification Context
+    let updatedOrders = [...orders];
+    let updatedOffers = [...offers];
+
+    if (offer) {
+      updatedOffers = offers.map(o => o.id === offer.id ? { ...o, status: action === 'decline' ? 'declined' : action === 'accept' ? 'accepted' : 'received' } : o);
+      
+      if (order) {
+        updatedOrders = orders.map(o => o.id === order.id ? { ...o, status: action === 'decline' ? 'declined' : action === 'accept' ? 'accepted' : 'countered' } : o);
+
+        if (action === 'counter') {
+          // Create new Order of type counter for the seller to see
+          const newOrder = {
+            id: `order-${Date.now()}`,
+            type: 'counter' as const,
+            cardId: cardId,
+            buyerId: 'buyer-001',
+            buyerName: order.buyerName,
+            sellerName: order.sellerName,
+            productPriceRaw: order.productPriceRaw,
+            offeredPrice: price,
+            description: `Counter to seller offer`,
+            status: 'pending' as const,
+            createdAt: new Date().toISOString(),
+          };
+          updatedOrders.push(newOrder);
+        }
+      }
+    }
+
+    updateOrders(updatedOrders);
+    updateOffers(updatedOffers);
+
+    return nextSession;
+  };
+
+  const finalizeNegotiation = (cardId: string) => {
+    const existing = sessions[cardId];
+    if (!existing) return null;
+    const now = Date.now();
+
+    const nextSession = buildSession({
+      ...existing,
+      status: 'finalized',
+      pendingFor: null,
+      lastActor: 'buyer',
+      lastActionLabel: 'Payment completed',
+      updatedAt: new Date(now).toISOString(),
+    });
+
+    setSessions((prev) => ({ ...prev, [cardId]: nextSession }));
+
+    pushNotification({
+      title: 'Payment completed',
+      message: `Payment of ${existing.currentValue.toLocaleString()} has been completed for card ${cardId}.`,
+      category: 'order',
+      relatedId: cardId,
+      actor: 'buyer',
+      status: 'accepted',
+    });
+
+    // Update corresponding order/offer in notification context
+    const latestOrder = [...orders].reverse().find(o => o.cardId === cardId);
+    let updatedOrders = [...orders];
+    let updatedOffers = [...offers];
+
+    if (latestOrder) {
+      updatedOrders = orders.map(o => o.id === latestOrder.id ? { ...o, status: 'completed' as const } : o);
+      
+      const latestOffer = [...offers].reverse().find(o => o.orderId === latestOrder.id);
+      if (latestOffer) {
+        updatedOffers = offers.map(o => o.id === latestOffer.id ? { ...o, status: 'completed' as const } : o);
+      }
+    }
+
+    updateOrders(updatedOrders);
+    updateOffers(updatedOffers);
+
     return nextSession;
   };
 
@@ -500,6 +685,7 @@ export function NegotiationProvider({ children }: { children: ReactNode }) {
         startBuyerCounter,
         sellerRespondToOrder,
         buyerRespondToOffer,
+        finalizeNegotiation,
         getSession,
         getSessionLabel,
         getSessionStatus,

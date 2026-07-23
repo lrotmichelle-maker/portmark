@@ -126,6 +126,8 @@ buyercard/
 ├── postcss.config.mjs
 ├── eslint.config.mjs
 ├── AGENTS.md
+├── plan.cmd
+├── campaignplan.cmd
 └── CLAUDE.md
 ```
 

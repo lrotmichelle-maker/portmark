@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Header from './header';
 import Content from './content';
 import Sentiment from './sentiment';
 import Footer from './footer';
 import type { MarketCardData } from '@/types';
 import { formatToUGX } from '@/lib/currency';
+import { useNegotiationContext } from '@/context/NegotiationContext';
 
 interface MarketCardProps {
     cardData: MarketCardData;
@@ -17,34 +18,62 @@ interface MarketCardProps {
 }
 
 export default function MarketCard({ cardData, hideFooter = false, hideBorder = false, onBuyClick, onCounterSubmit }: MarketCardProps) {
+    const { sessions } = useNegotiationContext();
+    const session = sessions[cardData.id];
+    
     const productPrice = cardData.productPriceRaw;
-    const minPrice = productPrice * 0.6;
+    
+    // Limits
+    const counterAttempts = session?.buyerCounterCount ?? 0;
+    
+    // Dynamic discount floor
+    // Counter 1: 40% max off -> min 60%
+    // Counter 2: 30% max off -> min 70%
+    // Counter 3: 15% max off -> min 85%
+    let maxOff = 0.40;
+    if (counterAttempts === 1) maxOff = 0.30;
+    else if (counterAttempts === 2) maxOff = 0.15;
+    
+    const minPrice = productPrice * (1 - maxOff);
     const maxPrice = productPrice * 1.5;
 
     const [liveOffers, setLiveOffers] = useState(cardData.offersCount ?? 0);
-    const [counterAttempts, setCounterAttempts] = useState(0);
     const [showPriceInput, setShowPriceInput] = useState(false);
     const [userOffer, setUserOffer] = useState("");
     const [costlyVotes, setCostlyVotes] = useState(cardData.sentimentRate ?? 0);
     const [hasVotedCostly, setHasVotedCostly] = useState(false);
+    const [cooldownRemaining, setCooldownRemaining] = useState(0);
 
-    // Tracks if this user has an active negotiation on THIS specific product ID
-    const [hasActiveOffer, setHasActiveOffer] = useState(false);
+    useEffect(() => {
+        if (!session?.cooldownUntil) return;
+        const target = new Date(session.cooldownUntil).getTime();
+        const updateTimer = () => {
+            const diff = target - Date.now();
+            setCooldownRemaining(Math.max(0, Math.floor(diff / 1000)));
+        };
+        updateTimer();
+        const interval = setInterval(updateTimer, 1000);
+        return () => clearInterval(interval);
+    }, [session?.cooldownUntil]);
 
-    const isMaxed = liveOffers >= 12;
+    const isMaxed = liveOffers >= 12 || counterAttempts >= 3;
+    const isCooling = cooldownRemaining > 0;
+    
+    const isInactive = session && ['passed', 'declined', 'timed-out'].includes(session.status);
+    const hasActiveOffer = session && ['buyer-pending', 'seller-pending', 'accepted', 'payment-pending'].includes(session.status);
 
     const numericOffer = parseFloat(userOffer);
     const isError = userOffer !== "" && (numericOffer < minPrice || numericOffer > maxPrice);
 
     const handleCounterInitiate = () => {
-        if (counterAttempts < 2 && !isMaxed) setShowPriceInput(true);
+        if (counterAttempts < 3 && !isMaxed && !isCooling && !isInactive && !hasActiveOffer) {
+            setShowPriceInput(true);
+        }
     };
 
     const confirmCounterOffer = (price: string) => {
-        if (isError || !price || isMaxed) return;
+        if (isError || !price || isMaxed || isCooling || isInactive || hasActiveOffer) return;
         setLiveOffers((prev) => prev + 1);
-        setCounterAttempts((prev) => prev + 1);
-        setHasActiveOffer(true);
         setShowPriceInput(false);
         const numPrice = parseFloat(price);
         onCounterSubmit?.(numPrice);
@@ -52,7 +81,7 @@ export default function MarketCard({ cardData, hideFooter = false, hideBorder = 
     };
 
     return (
-        <div className={`w-full max-w-[350px] mx-auto bg-black p-4 flex flex-col gap-4 ${hideBorder ? '' : 'rounded-2xl border border-neutral-800'}`}>
+        <div className={`w-full max-w-[350px] mx-auto bg-black p-4 flex flex-col gap-4 transition-all duration-300 ${hideBorder ? '' : 'rounded-2xl border border-neutral-800'} ${isInactive ? 'opacity-60 grayscale bg-neutral-900/40 pointer-events-none' : ''}`}>
             <Header
                 name={cardData.sellerName}
                 username={cardData.sellerUsername}
@@ -63,15 +92,33 @@ export default function MarketCard({ cardData, hideFooter = false, hideBorder = 
                 isAdminVerified={cardData.isAdminVerified}
                 createdAt={cardData.createdAt}
                 offersCount={liveOffers}
-                hasActiveOffer={hasActiveOffer}
+                hasActiveOffer={Boolean(hasActiveOffer)}
                 onExpire={() => { }}
             />
+
+            {hasActiveOffer && (
+                <div className="text-center py-1.5 px-3 rounded-xl border border-purple-500/20 bg-purple-500/10 text-[10px] font-black uppercase tracking-wider text-purple-400">
+                    {session.status === 'buyer-pending' ? 'Pending Seller Response' : 'Countered by Seller (See Offers)'}
+                </div>
+            )}
+
+            {isCooling && !hasActiveOffer && (
+                <div className="text-center py-1.5 px-3 rounded-xl border border-amber-500/20 bg-amber-500/10 text-[10px] font-black uppercase tracking-wider text-amber-400">
+                    Cooldown: {cooldownRemaining}s
+                </div>
+            )}
+
+            {isInactive && (
+                <div className="text-center py-1.5 px-3 rounded-xl border border-red-500/20 bg-red-500/10 text-[10px] font-black uppercase tracking-wider text-red-400">
+                    Status: {session.status}
+                </div>
+            )}
 
             <Content cardData={cardData} />
 
             {showPriceInput && !isMaxed && (
                 <div className="p-4 bg-zinc-950/80 border border-zinc-700 rounded-2xl flex flex-col gap-3">
-                    <h2 className="font-bold text-xs text-white">Suggest a bid ({counterAttempts}/2)</h2>
+                    <h2 className="font-bold text-xs text-white">Suggest a bid (Attempt {counterAttempts + 1}/3)</h2>
                     <input
                         type="number"
                         placeholder={`Min: ${formatToUGX(minPrice)}`}
@@ -94,7 +141,7 @@ export default function MarketCard({ cardData, hideFooter = false, hideBorder = 
                     onCounterClick={handleCounterInitiate}
                     counterAttempts={counterAttempts}
                     onCostlyClick={() => {
-                        if (!hasVotedCostly && costlyVotes < 100 && !isMaxed) {
+                        if (!hasVotedCostly && costlyVotes < 100 && !isMaxed && !isInactive) {
                             setCostlyVotes((prev) => prev + 1);
                             setHasVotedCostly(true);
                         }
@@ -102,7 +149,7 @@ export default function MarketCard({ cardData, hideFooter = false, hideBorder = 
                     hasVotedCostly={hasVotedCostly}
                     isCostlyMaxed={costlyVotes >= 100 || isMaxed}
                     offersCount={liveOffers}
-                    hasActiveOffer={hasActiveOffer}
+                    hasActiveOffer={Boolean(hasActiveOffer || isCooling)}
                 />
             )}
         </div>

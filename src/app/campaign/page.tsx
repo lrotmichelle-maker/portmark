@@ -3,8 +3,11 @@
 import React, { useEffect, useState } from 'react';
 import CampaignCard from '@/components/campaign-card';
 import type { CampaignCardData } from '@/types/campaign';
-import { Plus } from 'lucide-react';
+import { Plus, Activity, Megaphone, ClipboardList, BriefcaseBusiness } from 'lucide-react';
+import Link from 'next/link';
 import { recordOfficeEvent } from '@/lib/office-history';
+import AdvertModal from '@/components/layout/advert-modal';
+import CampaignModal from '@/components/layout/campaign-modal';
 
 export default function CampaignPage() {
   const [campaigns, setCampaigns] = useState<CampaignCardData[]>([]);
@@ -18,13 +21,29 @@ export default function CampaignPage() {
   });
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState<'sort_status' | 'cat_niche' | null>(null);
+  const [isAdvertOpen, setIsAdvertOpen] = useState(false);
+  const [isCampaignOpen, setIsCampaignOpen] = useState(false);
   const [popover, setPopover] = useState<{
     show: boolean;
     label: string;
     count: number;
   } | null>(null);
+  const [profile, setProfile] = useState<{ ownerName?: string; handle?: string } | null>(null);
 
   useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const res = await fetch('/api/profile');
+        if (!res.ok) return;
+        const data = await res.json();
+        setProfile(data);
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    loadProfile();
+
     const loadCampaigns = async () => {
       try {
         const response = await fetch('/api/campaigns');
@@ -62,11 +81,48 @@ export default function CampaignPage() {
     }
   };
 
-  const handleJoinCampaign = (id: string) => {
+  const handleJoinCampaign = async (id: string) => {
     setCampaigns((prev) =>
       prev.map((c) => (c.id === id ? { ...c, hasJoined: true } : c))
     );
+
+    try {
+      await fetch('/api/secure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-user-id': 'demo-user' },
+        body: JSON.stringify({ mode: 'interact', entityType: 'campaign', entityId: Number(id), actionType: 'join', message: 'Joined campaign' }),
+      });
+    } catch (error) {
+      console.error('Unable to record join event', error);
+    }
+
     recordOfficeEvent({ type: 'campaign', title: 'Campaign joined', description: 'You joined a campaign.', status: 'active' });
+  };
+
+  const handleUpdateCampaignStatus = async (id: string, status: string) => {
+    setCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, status } : c)));
+    try {
+      await fetch('/api/secure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-user-id': 'demo-user' },
+        body: JSON.stringify({ mode: 'update_campaign_status', entityId: Number(id), status }),
+      });
+    } catch (error) {
+      console.error('Failed to update campaign status', error);
+    }
+  };
+
+  const handleDeleteCampaign = async (id: string) => {
+    setCampaigns((prev) => prev.filter((c) => c.id !== id));
+    try {
+      await fetch('/api/secure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-user-id': 'demo-user' },
+        body: JSON.stringify({ mode: 'delete_campaign', entityId: Number(id) }),
+      });
+    } catch (error) {
+      console.error('Failed to delete campaign', error);
+    }
   };
 
   const handleExitCampaign = (id: string) => {
@@ -76,27 +132,25 @@ export default function CampaignPage() {
     recordOfficeEvent({ type: 'campaign', title: 'Campaign left', description: 'You left a campaign.', status: 'updated' });
   };
 
-  const handleCreateCampaign = () => {
-    const newCampaign: CampaignCardData = {
-      id: String(campaigns.length + 1),
-      publisherProfileIcon: '/path/to/new_publisher.jpg',
-      projectName: 'New Test Campaign',
-      publisherUsername: 'testpublisher',
-      publisherRating: 4.0,
-      timeRemainingDays: 14,
-      nicheHashtag: 'test, new, demo',
-      description: 'This is a newly created test campaign.',
-      category: 'Technology',
-      status: 'Active',
-      communitySize: 10000,
-      viewsGenerated: 50000,
-      likesGenerated: 2000,
-      totalBudget: 1000,
-      budgetUsed: 0,
-      highestMcp: 100,
-      hasJoined: false,
-    };
-    setCampaigns((prev) => [...prev, newCampaign]);
+  const handleCreateCampaign = async () => {
+    try {
+      const response = await fetch('/api/secure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-user-id': 'demo-user' },
+        body: JSON.stringify({ mode: 'create_campaign', title: 'New campaign', description: 'Created from the campaign page', category: 'Technology' }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok || !payload.item) {
+        throw new Error('Campaign creation failed');
+      }
+
+      const createdCampaign = payload.item as CampaignCardData;
+      setCampaigns((prev) => [createdCampaign, ...prev]);
+      recordOfficeEvent({ type: 'campaign', title: 'Campaign created', description: 'You created a campaign.', status: 'active' });
+    } catch (error) {
+      console.error('Unable to create campaign', error);
+    }
   };
 
   const filteredCampaigns = campaigns.filter((campaign) => {
@@ -164,9 +218,22 @@ export default function CampaignPage() {
 
   const alternatives = filteredCampaigns.length === 0 ? getAlternatives(searchTerm) : [];
 
+  const welcomeText = profile?.handle
+    ? `Welcome back, ${profile.handle}! Explore the latest campaigns to monetize your social media account.`
+    : 'Welcome to our campaign page! Check out the latest deals available — monetize your social media account by completing a campaign.';
+
   return (
     <div className="min-h-screen bg-zinc-950 text-white p-8">
-      <h1 className="text-3xl font-bold mb-8">Campaigns</h1>
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold">Campaigns</h1>
+        <p className="mt-2 text-sm text-zinc-400">{welcomeText}</p>
+
+        <div className="mt-4 flex items-center gap-3">
+          <Link href="/campaign/activity" className="rounded-lg px-3 py-2 text-sm text-emerald-400 border border-transparent hover:border-emerald-600/20">Joined</Link>
+          <Link href="/manage/campaigns" className="rounded-lg px-3 py-2 text-sm text-amber-400 border border-transparent hover:border-amber-500/20">Manage</Link>
+          <button onClick={() => setIsCampaignOpen(true)} className="rounded-lg px-3 py-2 text-sm text-blue-400 border border-transparent hover:border-blue-500/20">+ campaign</button>
+        </div>
+      </div>
 
       {/* Mobile Filter & Search Container with Glass Background */}
       <div className="md:hidden sticky top-4 z-20 backdrop-blur-md bg-zinc-950/75 border border-zinc-800/60 rounded-2xl p-4 shadow-xl mb-6 flex flex-col gap-3 relative">
@@ -398,14 +465,93 @@ export default function CampaignPage() {
           <option value="clipping">#clipping</option>
         </select>
 
-        <button
-          onClick={handleCreateCampaign}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors cursor-pointer ml-auto"
-        >
-          <Plus className="w-4 h-4" />
-          Create Campaign
-        </button>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Link
+            href="/campaign/activity"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 transition-colors"
+          >
+            <Activity className="w-4 h-4" />
+            Activity
+          </Link>
+          <Link
+            href="/manage/adverts"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 transition-colors"
+          >
+            <ClipboardList className="w-4 h-4" />
+            Adverts
+          </Link>
+          <Link
+            href="/manage/campaigns"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 transition-colors"
+          >
+            <BriefcaseBusiness className="w-4 h-4" />
+            Campaigns
+          </Link>
+          <button
+            onClick={() => setIsAdvertOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-500/40 bg-blue-500/10 text-blue-400 transition-colors"
+          >
+            <Megaphone className="w-4 h-4" />
+            Advertise
+          </button>
+        </div>
       </div>
+
+      {/* removed workspace card per design; buttons live under header */}
+
+      <CampaignModal
+        isOpen={isCampaignOpen}
+        onClose={() => setIsCampaignOpen(false)}
+        onPublishSuccess={(item) => {
+          const newCampaign = {
+            id: String(item?.id ?? Date.now()),
+            publisherProfileIcon: '/images/publisher-placeholder.png',
+            projectName: item?.projectName ?? 'New campaign',
+            publisherUsername: 'demo-user',
+            publisherRating: 4.8,
+            timeRemainingDays: item?.timeRemainingDays ?? 14,
+            nicheHashtag: item?.nicheHashtag ?? 'growth',
+            description: item?.description ?? 'Campaign created',
+            category: item?.category ?? 'Technology',
+            status: 'Active',
+            communitySize: 12000,
+            viewsGenerated: 10000,
+            likesGenerated: 1500,
+            totalBudget: item?.totalBudget ?? 1000,
+            budgetUsed: 0,
+            highestMcp: 100,
+            hasJoined: false,
+          } as CampaignCardData;
+          setCampaigns((prev) => [newCampaign, ...prev]);
+        }}
+      />
+
+      <AdvertModal
+        isOpen={isAdvertOpen}
+        onClose={() => setIsAdvertOpen(false)}
+        onPublishSuccess={(item) => {
+          const newCampaign = {
+            id: String(item?.id ?? Date.now()),
+            publisherProfileIcon: '/images/publisher-placeholder.png',
+            projectName: item?.projectName ?? 'New advert',
+            publisherUsername: 'demo-user',
+            publisherRating: 4.8,
+            timeRemainingDays: 14,
+            nicheHashtag: 'growth',
+            description: item?.description ?? 'Advert created',
+            category: item?.category ?? 'Technology',
+            status: 'Active',
+            communitySize: 12000,
+            viewsGenerated: 10000,
+            likesGenerated: 1500,
+            totalBudget: 1000,
+            budgetUsed: 0,
+            highestMcp: 100,
+            hasJoined: false,
+          } as CampaignCardData;
+          setCampaigns((prev) => [newCampaign, ...prev]);
+        }}
+      />
 
       {/* Campaigns Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -416,6 +562,8 @@ export default function CampaignPage() {
               data={campaign}
               onJoinCampaign={handleJoinCampaign}
               onExitCampaign={handleExitCampaign}
+              onPauseCampaign={(id, status) => handleUpdateCampaignStatus(id, status)}
+              onDeleteCampaign={(id) => handleDeleteCampaign(id)}
             />
           ))
         ) : (

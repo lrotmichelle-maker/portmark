@@ -23,15 +23,25 @@ export async function query<T extends Record<string, unknown> = Record<string, u
   text: string,
   params: unknown[] = []
 ): Promise<T[]> {
-  const db = await getPool();
-  const result = await db.query<T>(text, params);
-  return result.rows as T[];
+  try {
+    const db = await getPool();
+    const result = await db.query<T>(text, params);
+    return result.rows as T[];
+  } catch (error) {
+    console.error(`Database query failed: "${text}"`, error);
+    return [];
+  }
 }
 
 export async function queryOne<T extends Record<string, unknown> = Record<string, unknown>>(
   text: string,
   params: unknown[] = []
 ): Promise<T | null> {
-  const rows = await query<T>(text, params);
-  return rows[0] ?? null;
+  try {
+    const rows = await query<T>(text, params);
+    return rows[0] ?? null;
+  } catch (error) {
+    console.error(`Database queryOne failed: "${text}"`, error);
+    return null;
+  }
 }

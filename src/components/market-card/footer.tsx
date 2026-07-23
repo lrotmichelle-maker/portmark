@@ -20,10 +20,10 @@ export default function Footer({
 }: FooterProps) {
 
     const isMaxed = offersCount >= 12;
-    // Authorized to buy if not maxed, OR if you have an active negotiation on this product
-    const canBuy = !isMaxed || hasActiveOffer;
+    // Cannot buy or counter if there is already an active offer or if it is maxed
+    const canBuy = !isMaxed && !hasActiveOffer;
 
-    const isCounterDisabled = counterAttempts >= 2 || isMaxed;
+    const isCounterDisabled = counterAttempts >= 3 || isMaxed || hasActiveOffer;
     const isCostlyDisabled = hasVotedCostly || isCostlyMaxed || isMaxed;
 
     const getBtnClasses = (color: 'emerald' | 'amber' | 'red', isDisabled: boolean) => {
@@ -44,7 +44,7 @@ export default function Footer({
             </button>
 
             <button onClick={onCounterClick} disabled={isCounterDisabled} className={getBtnClasses('amber', isCounterDisabled)}>
-                <RefreshCw className="w-3 h-3" /> {isMaxed ? 'Full' : counterAttempts === 1 ? 'Final' : 'Counter'}
+                <RefreshCw className="w-3 h-3" /> {isMaxed ? 'Full' : counterAttempts === 2 ? 'Final' : 'Counter'}
             </button>
 
             <button onClick={onCostlyClick} disabled={isCostlyDisabled} className={getBtnClasses('red', isCostlyDisabled)}>

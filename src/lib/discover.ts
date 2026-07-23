@@ -41,15 +41,36 @@ function mapJobRow(row: Record<string, unknown>): JobOffer {
     status: (row.status as JobOffer['status']) ?? 'apply',
     statusUpdatedAt: new Date(toString(row.status_updated_at ?? row.statusUpdatedAt ?? new Date().toISOString())),
     increaseCount: toNumber(row.increase_count ?? row.increaseCount, 0),
+    hasApplied: Boolean(row.has_applied ?? row.hasApplied ?? false),
   };
 }
-
+ 
 export async function getDiscoverJobs(): Promise<JobOffer[]> {
-  const tables = ['job_offers', 'discover_jobs', 'jobs'];
+  const tables = ['vacancies', 'job_offers', 'discover_jobs', 'jobs'];
 
   for (const table of tables) {
     try {
-      const rows = await query<Record<string, unknown>>(`SELECT * FROM ${table} ORDER BY created_at DESC LIMIT 20`);
+      const rows = await query<Record<string, unknown>>(`
+        SELECT t.*,
+          EXISTS(
+            SELECT 1 FROM engagement_events e
+            WHERE e.entity_type = 'vacancy'
+              AND e.entity_id = t.id
+              AND e.actor_id = 'demo-user'
+              AND e.action = 'apply'
+              AND NOT EXISTS (
+                SELECT 1 FROM engagement_events e2
+                WHERE e2.entity_type = 'vacancy'
+                  AND e2.entity_id = t.id
+                  AND e2.actor_id = 'demo-user'
+                  AND e2.action = 'withdraw'
+                  AND e2.created_at > e.created_at
+              )
+          ) AS has_applied
+        FROM ${table} t
+        ORDER BY t.created_at DESC
+        LIMIT 20
+      `);
       return rows.map(mapJobRow);
     } catch (error) {
       console.warn(`Unable to query ${table}`, error);

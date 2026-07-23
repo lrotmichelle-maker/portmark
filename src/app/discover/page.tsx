@@ -2,10 +2,11 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, X, Briefcase, Flame, ArrowUpWideNarrow, UserCheck, Timer } from 'lucide-react';
+import { Search, X, Briefcase, Flame, ArrowUpWideNarrow, UserCheck, Timer, ClipboardList } from 'lucide-react';
 import JobCard from '@/components/job-card';
 import Grid from '@/components/layout/grid'; 
-import RecruitModal from '@/components/layout/recruit-modal'; // Imported our new pop-out form modal
+import RecruitModal from '@/components/layout/recruit-modal';
+import Link from 'next/link';
 import type { JobOffer } from '@/components/job-card/data';
 import { hasSavedCvData, recordOfficeEvent } from '@/lib/office-history';
 
@@ -131,15 +132,23 @@ export default function DiscoverPage() {
           )}
         </div>
 
-        {/* ➕ RECRUIT BUTTON NEXT TO SEARCH BAR */}
-        <button
-          type="button"
-          onClick={() => setIsRecruitOpen(true)}
-          className="flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800/80 text-zinc-200 border border-zinc-800 hover:border-zinc-700 px-4 py-3 rounded-2xl transition-all duration-150 font-bold uppercase text-[10px] tracking-widest shrink-0"
-        >
-          <Briefcase className="w-4 h-4 text-emerald-400" />
-          <span className="hidden sm:inline">Recruit</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/manage/vacancies"
+            className="flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800/80 text-zinc-200 border border-zinc-800 hover:border-zinc-700 px-3 py-3 rounded-2xl transition-all duration-150 font-bold uppercase text-[10px] tracking-widest shrink-0"
+          >
+            <ClipboardList className="w-4 h-4 text-amber-400" />
+            <span className="hidden sm:inline">Vacancies</span>
+          </Link>
+          <button
+            type="button"
+            onClick={() => setIsRecruitOpen(true)}
+            className="flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800/80 text-zinc-200 border border-zinc-800 hover:border-zinc-700 px-4 py-3 rounded-2xl transition-all duration-150 font-bold uppercase text-[10px] tracking-widest shrink-0"
+          >
+            <Briefcase className="w-4 h-4 text-emerald-400" />
+            <span className="hidden sm:inline">Recruit</span>
+          </button>
+        </div>
       </div>
 
       {/* 🧭 SINGLE ROW BADGE CHIP FILTERS */}
@@ -238,6 +247,29 @@ export default function DiscoverPage() {
       <RecruitModal 
         isOpen={isRecruitOpen} 
         onClose={() => setIsRecruitOpen(false)} 
+        onPublishSuccess={(newJobData) => {
+          const newListing: JobOffer = {
+            id: `local-${Date.now()}`,
+            employerName: newJobData.employerName,
+            handle: newJobData.employerName?.toLowerCase().replace(/\s+/g, '') || '@company',
+            rating: 4.8,
+            title: newJobData.title,
+            niche: 'Discover',
+            daysRemaining: newJobData.daysRemaining || 14,
+            requiredPeople: newJobData.vacant || 1,
+            applicants: 0,
+            accepted: 0,
+            requirements: newJobData.skills || [],
+            minSalary: newJobData.minSalary || 0,
+            maxSalary: newJobData.maxSalary || 0,
+            description: newJobData.description,
+            status: 'apply',
+            statusUpdatedAt: new Date(),
+            increaseCount: 0,
+          };
+
+          setJobsList((prev) => [newListing, ...prev]);
+        }}
       />
 
     </div>

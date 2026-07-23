@@ -1,14 +1,16 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { CheckCircle } from 'lucide-react';
+import { CheckCircle, Pause, Play, Trash2 } from 'lucide-react';
 import type { CampaignCardData } from '@/types/campaign';
 
 interface HeaderProps {
   data: CampaignCardData;
+  onPause?: (id: string, status: string) => void;
+  onDelete?: (id: string) => void;
 }
 
-export function Header({ data }: HeaderProps) {
+export function Header({ data, onPause, onDelete }: HeaderProps) {
   const [timeLeft, setTimeLeft] = useState(data.timeRemainingDays * 24 * 60 * 60 * 1000);
   const [imageError, setImageError] = useState(false);
 
@@ -73,6 +75,28 @@ export function Header({ data }: HeaderProps) {
           <span className="text-[6.5px] md:text-[8px] font-mono tracking-wider font-medium mt-1 text-zinc-500">
             Remaining
           </span>
+          {/* Manager controls: only show if current user is the creator (demo-user) */}
+          {data.publisherUsername === 'demo-user' && (
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                onClick={() => onPause?.(data.id, data.status.toLowerCase() === 'paused' ? 'active' : 'paused')}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-zinc-900/40 text-xs text-zinc-200 hover:bg-zinc-900"
+                aria-label="Pause or resume campaign"
+              >
+                {data.status.toLowerCase() === 'paused' ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+                <span className="text-[10px] font-black uppercase tracking-wider">{data.status.toLowerCase() === 'paused' ? 'Resume' : 'Pause'}</span>
+              </button>
+
+              <button
+                onClick={() => { if (confirm('Delete this campaign? This cannot be undone.')) onDelete?.(data.id); }}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-red-900/20 text-xs text-red-400 hover:bg-red-900/30"
+                aria-label="Delete campaign"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span className="text-[10px] font-black uppercase tracking-wider">Delete</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

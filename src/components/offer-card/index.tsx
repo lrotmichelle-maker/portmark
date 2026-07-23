@@ -1,28 +1,42 @@
 "use client";
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import type { OfferCardData } from './types';
 import { Header } from './header';
 import { Content } from './content';
 import { Sentiment } from './sentiment';
 import { Footer } from './footer';
 import { Smartphone, Check, X, Loader2, AlertCircle } from 'lucide-react';
+import type { NegotiationSession } from '@/context/NegotiationContext';
 
 interface OfferCardProps {
   data: OfferCardData;
+  session?: NegotiationSession;
   onRefreshData?: () => void;
   onAccept?: () => void;
   onCounter?: (price: number) => void;
   onDecline?: () => void;
   onCounterToggle?: () => void;
+  onFinalize?: () => void;
   activeAction?: 'view' | 'counter' | null;
 }
 
-export default function OfferCard({ data, onRefreshData, onAccept, onCounter, onDecline, onCounterToggle, activeAction: externalActiveAction }: OfferCardProps) {
+export default function OfferCard({
+  data,
+  session,
+  onRefreshData,
+  onAccept,
+  onCounter,
+  onDecline,
+  onCounterToggle,
+  onFinalize,
+  activeAction: externalActiveAction
+}: OfferCardProps) {
   const [customStatus, setCustomStatus] = useState<string | undefined>(undefined);
   const [previousStatus, setPreviousStatus] = useState<string | undefined>(undefined);
   const [isCounterOpen, setIsCounterOpen] = useState(false);
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
+  const [dismissedPayment, setDismissedPayment] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [counterInput, setCounterInput] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -44,19 +58,15 @@ export default function OfferCard({ data, onRefreshData, onAccept, onCounter, on
     productPrice: data.productPrice,
   });
 
-  const activeData = {
-    ...data,
-    isCountered: priceState.isCountered,
-    buyerOriginalOffer: priceState.buyerOriginalOffer,
-    sellerCounterOffer: priceState.sellerCounterOffer,
-    productPrice: priceState.productPrice,
-    customStatus: customStatus,
-  } as OfferCardData & { customStatus?: string };
+  useEffect(() => {
+    setDismissedPayment(false);
+  }, [session?.status]);
 
-  // Parse the raw target base price
-  const baselinePriceRaw = priceState.productPrice ?? 0;
-  const activeSellerPriceRaw = priceState.sellerCounterOffer ?? 0;
-  const currentTargetPrice = priceState.isCountered ? activeSellerPriceRaw : baselinePriceRaw;
+  const activeCounterCount = session ? session.buyerCounterCount : counterCount;
+  const baselinePriceRaw = session ? session.productPrice : (priceState.productPrice ?? 0);
+  const activeSellerPriceRaw = session ? session.currentValue : (priceState.sellerCounterOffer ?? 0);
+  const isCurrentlyCountered = session ? (session.buyerCounterCount > 0 || session.sellerCounterCount > 0) : priceState.isCountered;
+  const currentTargetPrice = isCurrentlyCountered ? activeSellerPriceRaw : baselinePriceRaw;
 
   // Real-time listener inside the counter input to handle UI messages
   const handleInputChange = (value: string) => {
@@ -69,19 +79,19 @@ export default function OfferCard({ data, onRefreshData, onAccept, onCounter, on
     if (isNaN(enteredVal)) return;
 
     // 1. Check Floor limits
-    const nextCount = counterCount + 1;
+    const nextCount = activeCounterCount + 1;
     let minimumFloorLimit = 0;
     let ruleLabel = '';
 
     if (nextCount === 1) {
-      minimumFloorLimit = baselinePriceRaw * 0.4;
-      ruleLabel = '40%';
+      minimumFloorLimit = baselinePriceRaw * (1 - 0.40);
+      ruleLabel = 'max 40% off';
     } else if (nextCount === 2) {
-      minimumFloorLimit = activeSellerPriceRaw * 0.25;
-      ruleLabel = '25%';
+      minimumFloorLimit = activeSellerPriceRaw * (1 - 0.30);
+      ruleLabel = 'max 30% off';
     } else {
-      minimumFloorLimit = activeSellerPriceRaw * 0.1;
-      ruleLabel = '10%';
+      minimumFloorLimit = activeSellerPriceRaw * (1 - 0.15);
+      ruleLabel = 'max 15% off';
     }
 
     if (enteredVal < minimumFloorLimit) {
@@ -116,11 +126,12 @@ export default function OfferCard({ data, onRefreshData, onAccept, onCounter, on
   };
 
   const handleCounterActivation = () => {
+    const activeStatus = session?.status || customStatus || data.customStatus;
     if (
-      customStatus === 'Overpayment' ||
-      customStatus === 'Pending' ||
-      customStatus === 'Processing' ||
-      customStatus === 'Lapsed' ||
+      activeStatus === 'Overpayment' ||
+      activeStatus === 'Pending' ||
+      activeStatus === 'Processing' ||
+      activeStatus === 'Lapsed' ||
       isVerifying
     )
       return;
@@ -133,11 +144,12 @@ export default function OfferCard({ data, onRefreshData, onAccept, onCounter, on
   };
 
   const handleAcceptAction = () => {
+    const activeStatus = session?.status || customStatus || data.customStatus;
     if (
-      customStatus === 'Overpayment' ||
-      customStatus === 'Pending' ||
-      customStatus === 'Processing' ||
-      customStatus === 'Lapsed' ||
+      activeStatus === 'Overpayment' ||
+      activeStatus === 'Pending' ||
+      activeStatus === 'Processing' ||
+      activeStatus === 'Lapsed' ||
       isVerifying
     )
       return;
@@ -147,9 +159,8 @@ export default function OfferCard({ data, onRefreshData, onAccept, onCounter, on
     setOverpaymentMessage(null);
     setActiveAction('accept');
 
-    const currentActiveStatus = customStatus || (priceState.isCountered ? 'Counter Offer' : 'Standard');
+    const currentActiveStatus = activeStatus || (isCurrentlyCountered ? 'Counter Offer' : 'Standard');
     setPreviousStatus(currentActiveStatus);
-    setCustomStatus('Processing');
     setIsPaymentOpen(true);
     if (onAccept) onAccept();
   };
@@ -163,6 +174,9 @@ export default function OfferCard({ data, onRefreshData, onAccept, onCounter, on
       setIsVerifying(false);
       setIsPaymentOpen(false);
       setCustomStatus('Finalized');
+      if (onFinalize) {
+        onFinalize();
+      }
       if (onRefreshData) {
         onRefreshData();
       }
@@ -178,6 +192,7 @@ export default function OfferCard({ data, onRefreshData, onAccept, onCounter, on
       setIsVerifying(false);
     }
     setCustomStatus(previousStatus);
+    setDismissedPayment(true);
     setIsPaymentOpen(false);
   };
 
@@ -186,7 +201,6 @@ export default function OfferCard({ data, onRefreshData, onAccept, onCounter, on
     if (!counterInput.trim() || validationError) return;
 
     const enteredPriceNumeric = parseFloat(counterInput);
-    const formattedPrice = `$${enteredPriceNumeric.toFixed(2)}`;
 
     // If it is submitted as an overpayment, map it simply to 'Overpayment'
     if (enteredPriceNumeric > currentTargetPrice && currentTargetPrice > 0) {
@@ -218,9 +232,27 @@ export default function OfferCard({ data, onRefreshData, onAccept, onCounter, on
     }
   };
 
-  const finalPayableAmount = priceState.isCountered ? priceState.sellerCounterOffer : priceState.productPrice;
-  const isInactive = customStatus === 'Lapsed' || customStatus === 'Finalized';
+  const finalPayableAmount = session ? session.currentValue : (isCurrentlyCountered ? priceState.sellerCounterOffer : priceState.productPrice);
+  const isInactive = session ? ['passed', 'declined', 'timed-out', 'finalized'].includes(session.status) : (customStatus === 'Lapsed' || customStatus === 'Finalized');
   const isCounterActive = externalActiveAction === 'counter' || activeAction === 'counter';
+
+  const activeStatus = isVerifying
+    ? 'Processing...'
+    : isPaymentOpen
+      ? 'Processing'
+      : (session?.status || customStatus || data.customStatus);
+
+  const activeData = {
+    ...data,
+    isCountered: isCurrentlyCountered,
+    buyerOriginalOffer: session ? session.productPrice : priceState.buyerOriginalOffer,
+    sellerCounterOffer: session ? session.currentValue : priceState.sellerCounterOffer,
+    productPrice: baselinePriceRaw,
+    customStatus: activeStatus,
+    isInactive,
+  } as OfferCardData & { customStatus?: string };
+
+  const isPaymentVisible = (isPaymentOpen || session?.status === 'payment-pending') && !dismissedPayment && !isInactive;
 
   return (
     <div className={`w-full max-w-[420px] bg-black border border-zinc-800/80 rounded-[28px] p-5 flex flex-col gap-5 shadow-2xl tracking-tight select-none transition-all duration-300 ease-in-out ${isInactive ? 'opacity-70 grayscale-[0.25]' : ''}`}>
@@ -236,7 +268,7 @@ export default function OfferCard({ data, onRefreshData, onAccept, onCounter, on
         >
           <div className="flex flex-col text-left">
             <h4 className="text-xs font-black text-white tracking-tight">
-              Make Counter Offer (Attempt #{counterCount + 1})
+              Make Counter Offer (Attempt #{activeCounterCount + 1})
             </h4>
           </div>
 
@@ -302,7 +334,7 @@ export default function OfferCard({ data, onRefreshData, onAccept, onCounter, on
       )}
 
       {/* B. SITE MERCHANT CHECKOUT PANEL */}
-      {isPaymentOpen && (
+      {isPaymentVisible && (
         <div className="w-full bg-transparent border border-neutral-900 rounded-2xl p-4 flex flex-col gap-3.5 animate-in slide-in-from-top-4 duration-200">
           <div className="flex items-start justify-between">
             <div className="flex flex-col text-left">

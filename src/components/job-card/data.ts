@@ -18,6 +18,7 @@ export interface JobOffer {
   status: 'apply' | 'paused' | 'filled' | 'acquired';
   statusUpdatedAt: Date; 
   increaseCount: number; 
+  hasApplied?: boolean;
 }
 
 const employers = ["Portville Agency", "Kla Tech Hub", "Wandegeya Labs", "Nakasero Venture", "Kololo Digital"];

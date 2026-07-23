@@ -4,6 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { Menu, X, User, Bell, ShoppingCart, Building2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useNotification } from "@/hooks/useNotification"
 
 const navLinks = [
     { href: "/discover", label: "Discover" },
@@ -13,27 +14,12 @@ const navLinks = [
 ]
 
 export default function Navbar() {
-    const [notificationCount, setNotificationCount] = React.useState(0)
-    const [cartCount, setCartCount] = React.useState(0)
-    const [isNotificationSeen, setIsNotificationSeen] = React.useState(false)
-    const [isCartSeen, setIsCartSeen] = React.useState(false)
+    const { notificationCount, cartCount, markNotificationsAsSeen, markCartAsSeen, isNotificationSeen, isCartSeen } = useNotification()
     const [isMenuOpen, setIsMenuOpen] = React.useState(false)
     const menuRef = React.useRef<HTMLDivElement | null>(null)
 
     const formatBadgeCount = (count: number) => (count > 99 ? "99+" : String(count))
     const shouldShowBadge = (count: number, hasBeenSeen: boolean) => count > 0 && !hasBeenSeen
-
-    React.useEffect(() => {
-        const storedOrders = localStorage.getItem('orders')
-        const storedOffers = localStorage.getItem('offers')
-        const orders = storedOrders ? JSON.parse(storedOrders) : []
-        const offers = storedOffers ? JSON.parse(storedOffers) : []
-        const unviewedOffers = offers.filter((offer: { status: string }) => offer.status === 'sent' || offer.status === 'received').length
-        const unviewedOrders = orders.filter((order: { status: string }) => order.status === 'pending').length
-        const totalUnviewed = unviewedOffers + unviewedOrders
-        setNotificationCount(totalUnviewed)
-        setCartCount(unviewedOffers)
-    }, [])
 
     React.useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -47,13 +33,11 @@ export default function Navbar() {
     }, [isMenuOpen])
 
     const handleCartClick = () => {
-        setIsCartSeen(true)
-        setCartCount(0)
+        markCartAsSeen()
     }
 
     const handleNotificationClick = () => {
-        setIsNotificationSeen(true)
-        setNotificationCount(0)
+        markNotificationsAsSeen()
     }
 
     const closeMenu = () => setIsMenuOpen(false)

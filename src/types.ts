@@ -1,6 +1,6 @@
-export type OrderStatus = 'pending' | 'accepted' | 'countered' | 'declined' | 'completed';
+export type OrderStatus = 'pending' | 'accepted' | 'countered' | 'declined' | 'completed' | 'passed' | 'timed-out';
 export type OfferType = 'accept' | 'counter';
-export type OfferStatus = 'sent' | 'received' | 'accepted' | 'rejected' | 'declined' | 'completed';
+export type OfferStatus = 'sent' | 'received' | 'accepted' | 'rejected' | 'declined' | 'completed' | 'passed' | 'timed-out';
 
 export interface Order {
   id: string;

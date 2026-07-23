@@ -37,7 +37,27 @@ export async function getCampaigns(): Promise<CampaignCardData[]> {
 
   for (const table of tables) {
     try {
-      const rows = await query<Record<string, unknown>>(`SELECT * FROM ${table} ORDER BY created_at DESC LIMIT 12`);
+      const rows = await query<Record<string, unknown>>(`
+        SELECT t.*,
+          EXISTS(
+            SELECT 1 FROM engagement_events e
+            WHERE e.entity_type = 'campaign'
+              AND e.entity_id = t.id
+              AND e.actor_id = 'demo-user'
+              AND e.action = 'join'
+              AND NOT EXISTS (
+                SELECT 1 FROM engagement_events e2
+                WHERE e2.entity_type = 'campaign'
+                  AND e2.entity_id = t.id
+                  AND e2.actor_id = 'demo-user'
+                  AND e2.action = 'exit'
+                  AND e2.created_at > e.created_at
+              )
+          ) AS has_joined
+        FROM ${table} t
+        ORDER BY t.created_at DESC
+        LIMIT 20
+      `);
       return rows.map(mapCampaignRow);
     } catch (error) {
       console.warn(`Unable to query ${table}`, error);

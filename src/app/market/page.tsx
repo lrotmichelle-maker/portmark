@@ -5,6 +5,9 @@ import dynamic from 'next/dynamic';
 import type { MarketCardData, Order } from '@/types';
 import { recordOfficeEvent } from '@/lib/office-history';
 import { useNegotiationContext } from '@/context/NegotiationContext';
+import ListingModal from '@/components/layout/listing-modal';
+import { Plus, ClipboardList } from 'lucide-react';
+import Link from 'next/link';
 
 const MarketCard = dynamic(() => import('@/components/market-card'), {
   ssr: false,
@@ -20,7 +23,7 @@ function generateOrderId() {
 
 export default function MarketPage() {
   const [marketCards, setMarketCards] = useState<MarketCardData[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [isListingOpen, setIsListingOpen] = useState(false);
   const { startBuyerBuy, startBuyerCounter } = useNegotiationContext();
 
   useEffect(() => {
@@ -37,21 +40,7 @@ export default function MarketPage() {
     };
 
     loadData();
-
-    const stored = localStorage.getItem('orders');
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        setTimeout(() => setOrders(parsed), 0);
-      } catch (e) {
-        console.error('Failed to parse orders from localStorage', e);
-      }
-    }
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem('orders', JSON.stringify(orders));
-  }, [orders]);
 
   const visibleMarketCards = marketCards.filter((card) => (card.offersCount ?? 0) < 12);
 
@@ -66,20 +55,6 @@ export default function MarketPage() {
     });
 
     if (!session) return;
-
-    const newOrder: Order = {
-      id: generateOrderId(),
-      type: 'buy',
-      cardId: card.id,
-      buyerId: BUYER_ID,
-      buyerName: BUYER_NAME,
-      productPriceRaw: card.productPriceRaw,
-      description: card.description,
-      sellerName: card.sellerName,
-      createdAt: new Date().toISOString(),
-      status: 'pending',
-    };
-    setOrders((prev) => [...prev, newOrder]);
     recordOfficeEvent({ type: 'offer', title: 'Buy request sent', description: `Buyer initiated a purchase request for ${card.sellerName}.`, status: 'pending' });
   };
 
@@ -95,21 +70,6 @@ export default function MarketPage() {
     });
 
     if (!session) return;
-
-    const newOrder: Order = {
-      id: generateOrderId(),
-      type: 'counter',
-      cardId: card.id,
-      buyerId: BUYER_ID,
-      buyerName: BUYER_NAME,
-      productPriceRaw: card.productPriceRaw,
-      offeredPrice,
-      description: card.description,
-      sellerName: card.sellerName,
-      createdAt: new Date().toISOString(),
-      status: 'pending',
-    };
-    setOrders((prev) => [...prev, newOrder]);
     recordOfficeEvent({ type: 'offer', title: 'Counter submitted', description: `Buyer submitted a counter offer for ${card.sellerName}.`, status: 'pending' });
   };
 
@@ -123,6 +83,19 @@ export default function MarketPage() {
           <p className="text-lg text-muted-foreground">
             Browse available listings and make counter offers
           </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              onClick={() => setIsListingOpen(true)}
+              className="flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-400"
+            >
+              <Plus className="h-4 w-4" />
+              Listing
+            </button>
+            <Link href="/manage/listings" className="flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900/70 px-4 py-2 text-sm font-semibold text-zinc-200">
+              <ClipboardList className="h-4 w-4" />
+              My listings
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -147,6 +120,36 @@ export default function MarketPage() {
           )}
         </div>
       </main>
+
+      <ListingModal
+        isOpen={isListingOpen}
+        onClose={() => setIsListingOpen(false)}
+        onPublishSuccess={(item) => {
+          const newCard: MarketCardData = {
+            id: String(item?.id ?? Date.now()),
+            sellerName: item?.handle ? `@${item.handle}` : 'demo-user',
+            sellerUsername: item?.handle ? `@${item.handle}` : 'demo-user',
+            description: item?.description ?? 'New market listing',
+            handle: item?.handle ? `@${item.handle}` : '@demo-user',
+            followers: Number(item?.followers ?? 0),
+            likes: Number(item?.likes ?? 0),
+            erCurrentRatio: Number(item?.engagementRate ?? 0),
+            erPreviousRatio: Number(item?.engagementRate ?? 0),
+            vlCurrentRatio: 0,
+            vlPreviousRatio: 0,
+            sellerAvatar: undefined,
+            productPriceRaw: Number(item?.price ?? 0),
+            valueRaw: Number(item?.price ?? 0),
+            sellerBuys: 4,
+            sellerSells: 2,
+            sellerStars: 4.9,
+            isAdminVerified: true,
+            createdAt: new Date().toISOString(),
+            offersCount: 0,
+          };
+          setMarketCards((prev) => [newCard, ...prev]);
+        }}
+      />
     </div>
   );
 }
